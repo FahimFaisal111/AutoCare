@@ -1,0 +1,108 @@
+"use client";
+
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { api, AuthResponse, UserProfile, LoginPayload, CustomerRegisterPayload, MechanicRegisterPayload, ApiError } from "@/lib/api";
+
+interface AuthContextType {
+  user: UserProfile | null;
+  token: string | null;
+  isLoading: boolean;
+  login: (payload: LoginPayload) => Promise<AuthResponse>;
+  registerCustomer: (payload: CustomerRegisterPayload) => Promise<AuthResponse>;
+  registerMechanic: (payload: MechanicRegisterPayload) => Promise<AuthResponse>;
+  logout: () => void;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  const saveAuthSession = (auth: AuthResponse) => {
+    localStorage.setItem("autocare_token", auth.token);
+    setToken(auth.token);
+    setUser({
+      userId: auth.userId,
+      workshopId: auth.workshopId,
+      workshopName: auth.workshopName,
+      email: auth.email,
+      firstName: auth.firstName,
+      lastName: auth.lastName,
+      role: auth.role,
+    });
+  };
+
+  const logout = useCallback(() => {
+    localStorage.removeItem("autocare_token");
+    setToken(null);
+    setUser(null);
+  }, []);
+
+  // Initialize session on mount by checking token and verifying with backend
+  useEffect(() => {
+    const initAuth = async () => {
+      const storedToken = localStorage.getItem("autocare_token");
+      if (!storedToken) {
+        setIsLoading(false);
+        return;
+      }
+
+      setToken(storedToken);
+      try {
+        const profile = await api.getMe();
+        setUser(profile);
+      } catch (err) {
+        console.warn("Session expired or invalid, logging out.", err);
+        logout();
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initAuth();
+  }, [logout]);
+
+  const login = async (payload: LoginPayload) => {
+    const res = await api.login(payload);
+    saveAuthSession(res);
+    return res;
+  };
+
+  const registerCustomer = async (payload: CustomerRegisterPayload) => {
+    const res = await api.registerCustomer(payload);
+    saveAuthSession(res);
+    return res;
+  };
+
+  const registerMechanic = async (payload: MechanicRegisterPayload) => {
+    const res = await api.registerMechanic(payload);
+    saveAuthSession(res);
+    return res;
+  };
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        isLoading,
+        login,
+        registerCustomer,
+        registerMechanic,
+        logout,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
+}
