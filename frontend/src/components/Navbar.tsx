@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { Wrench, Shield, User as UserIcon, LogOut, ArrowRight } from "lucide-react";
+import { Wrench, Shield, User as UserIcon, LogOut, ArrowRight, Building2 } from "lucide-react";
 import { clsx } from "clsx";
 
 export function Navbar() {
@@ -58,6 +58,18 @@ export function Navbar() {
             </div>
           ) : (
             <div className="flex items-center gap-2">
+              <Link
+                href="/register/workshop"
+                className={clsx(
+                  "hidden sm:flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg transition-all",
+                  pathname === "/register/workshop"
+                    ? "bg-zinc-800 text-sky-300 border border-zinc-700"
+                    : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900"
+                )}
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                <span>New Workshop</span>
+              </Link>
               <Link
                 href="/login"
                 className={clsx(

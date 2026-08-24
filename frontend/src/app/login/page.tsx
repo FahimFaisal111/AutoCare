@@ -75,18 +75,31 @@ export default function LoginPage() {
           icon={<Mail className="w-4 h-4" />}
         />
 
-        <FormInput
-          label="Password"
-          type="password"
-          name="password"
-          id="login-password"
-          placeholder="••••••••"
-          required
-          autoComplete="current-password"
-          value={formData.password}
-          onChange={handleChange}
-          icon={<Lock className="w-4 h-4" />}
-        />
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-semibold text-zinc-300">Password</label>
+            <Link
+              href="/forgot-password"
+              className="text-xs text-sky-400 hover:text-sky-300 transition-colors"
+            >
+              Forgot password?
+            </Link>
+          </div>
+          <div className="relative">
+            <FormInput
+              type="password"
+              name="password"
+              id="login-password"
+              placeholder="••••••••"
+              required
+              autoComplete="current-password"
+              value={formData.password}
+              onChange={handleChange}
+              icon={<Lock className="w-4 h-4" />}
+            />
+          </div>
+        </div>
+
 
         <button
           type="submit"

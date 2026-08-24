@@ -1,14 +1,14 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { AuthCard } from "@/components/AuthCard";
 import { FormInput } from "@/components/FormInput";
 import { AlertMessage } from "@/components/AlertMessage";
-import { User, Mail, Lock, Key, Wrench, BadgePercent, Loader2, ArrowRight } from "lucide-react";
-import { ApiError } from "@/lib/api";
+import { User, Mail, Lock, Key, Wrench, Loader2, ArrowRight, Building2 } from "lucide-react";
+import { api, ApiError, WorkshopSummary } from "@/lib/api";
 
 export default function MechanicRegisterPage() {
   const router = useRouter();
@@ -23,9 +23,22 @@ export default function MechanicRegisterPage() {
     employeeCode: "",
   });
 
+  const [availableWorkshops, setAvailableWorkshops] = useState<WorkshopSummary[]>([]);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    const fetchWorkshops = async () => {
+      try {
+        const workshops = await api.getWorkshops();
+        setAvailableWorkshops(workshops);
+      } catch (err) {
+        console.warn("Could not fetch workshop list", err);
+      }
+    };
+    fetchWorkshops();
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -34,6 +47,13 @@ export default function MechanicRegisterPage() {
       setValidationErrors((prev) => ({ ...prev, [name]: "" }));
     }
     if (errorMessage) setErrorMessage("");
+  };
+
+  const handleSelectWorkshop = (code: string) => {
+    setFormData((prev) => ({ ...prev, workshopAccessCode: code }));
+    if (validationErrors.workshopAccessCode) {
+      setValidationErrors((prev) => ({ ...prev, workshopAccessCode: "" }));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -124,24 +144,49 @@ export default function MechanicRegisterPage() {
           icon={<Lock className="w-4 h-4" />}
         />
 
-        <FormInput
-          label="Workshop Access Code"
-          name="workshopAccessCode"
-          id="mech-access-code"
-          placeholder="e.g. UP-MTR-2026"
-          required
-          value={formData.workshopAccessCode}
-          onChange={handleChange}
-          error={validationErrors.workshopAccessCode}
-          helperText="Unique tenant code for the hiring workshop"
-          icon={<Key className="w-4 h-4" />}
-        />
+        {/* Dynamic Workshop Picker */}
+        <div className="space-y-1.5">
+          <FormInput
+            label="Workshop Access Code"
+            name="workshopAccessCode"
+            id="mech-access-code"
+            placeholder="e.g. UP-MTR-2026 or APEX-2026"
+            required
+            value={formData.workshopAccessCode}
+            onChange={handleChange}
+            error={validationErrors.workshopAccessCode}
+            helperText="Enter the hiring workshop code or select an active shop"
+            icon={<Key className="w-4 h-4" />}
+          />
+
+          {availableWorkshops.length > 0 && (
+            <div className="pt-1 flex flex-wrap gap-1.5 items-center">
+              <span className="text-[11px] text-zinc-500 flex items-center gap-1">
+                <Building2 className="w-3 h-3" /> Quick Select:
+              </span>
+              {availableWorkshops.map((ws) => (
+                <button
+                  type="button"
+                  key={ws.workshopId}
+                  onClick={() => handleSelectWorkshop(ws.accessCode)}
+                  className={`text-[11px] px-2 py-0.5 rounded border transition-colors ${
+                    formData.workshopAccessCode === ws.accessCode
+                      ? "bg-sky-500/20 border-sky-500/40 text-sky-300 font-semibold"
+                      : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-300"
+                  }`}
+                >
+                  {ws.name} ({ws.accessCode})
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <FormInput
           label="Employee Badge Code"
           name="employeeCode"
           id="mech-employee-code"
-          placeholder="e.g. EMP-DT-005"
+          placeholder="e.g. EMP-009 or TECH-101"
           required
           value={formData.employeeCode}
           onChange={handleChange}
@@ -158,7 +203,7 @@ export default function MechanicRegisterPage() {
           {isSubmitting ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Registering Staff Member...</span>
+              <span>Registering Technician...</span>
             </>
           ) : (
             <>

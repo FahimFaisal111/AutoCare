@@ -73,6 +73,39 @@ public class JwtUtil {
         }
     }
 
+    /**
+     * Generates a short-lived (15 minutes) cryptographically signed password reset token.
+     */
+    public String generatePasswordResetToken(String email) {
+        Date now = new Date();
+        long resetExpiryMs = 15 * 60 * 1000L; // 15 minutes
+        Date expiryDate = new Date(now.getTime() + resetExpiryMs);
+
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("purpose", "PASSWORD_RESET");
+
+        return Jwts.builder()
+            .claims(claims)
+            .subject(email)
+            .issuedAt(now)
+            .expiration(expiryDate)
+            .signWith(key)
+            .compact();
+    }
+
+    public boolean validatePasswordResetToken(String token) {
+        try {
+            Claims claims = getClaims(token);
+            return "PASSWORD_RESET".equals(claims.get("purpose", String.class));
+        } catch (JwtException | IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    public String getEmailFromResetToken(String token) {
+        return getClaims(token).getSubject();
+    }
+
     private Claims getClaims(String token) {
         return Jwts.parser()
             .verifyWith(key)
@@ -81,3 +114,4 @@ public class JwtUtil {
             .getPayload();
     }
 }
+

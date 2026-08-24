@@ -9,4 +9,8 @@ import java.util.Optional;
 public interface MechanicRepository extends JpaRepository<Mechanic, Integer> {
     boolean existsByEmployeeCode(String employeeCode);
     Optional<Mechanic> findByEmployeeCode(String employeeCode);
+
+    @org.springframework.data.jpa.repository.Query("SELECT m FROM Mechanic m WHERE m.workshop.workshopId = :workshopId")
+    java.util.List<Mechanic> findAllByWorkshopId(@org.springframework.data.repository.query.Param("workshopId") Integer workshopId);
 }
+

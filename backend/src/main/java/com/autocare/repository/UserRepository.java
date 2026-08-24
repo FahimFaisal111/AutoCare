@@ -26,4 +26,11 @@ public interface UserRepository extends JpaRepository<User, Integer> {
      */
     @Query("SELECT u FROM User u WHERE u.workshop.workshopId = :workshopId")
     List<User> findAllByWorkshopId(@Param("workshopId") Integer workshopId);
+
+    @Query("SELECT u FROM User u WHERE u.workshop.workshopId = :workshopId AND u.role = :role")
+    List<User> findAllByWorkshopIdAndRole(@Param("workshopId") Integer workshopId, @Param("role") com.autocare.entity.Role role);
+
+    @Query("SELECT COUNT(u) FROM User u WHERE u.workshop.workshopId = :workshopId AND u.role = :role")
+    long countByWorkshopIdAndRole(@Param("workshopId") Integer workshopId, @Param("role") com.autocare.entity.Role role);
 }
+

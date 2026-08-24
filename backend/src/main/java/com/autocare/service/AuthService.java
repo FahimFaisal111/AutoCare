@@ -168,4 +168,111 @@ public class AuthService {
 
         return builder.build();
     }
+
+    /**
+     * Registers a new Workshop organization and provisions its initial ADMIN owner account.
+     */
+    @Transactional
+    public AuthResponse registerWorkshop(WorkshopRegisterRequest request) {
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new ConflictException("An account with email " + request.getEmail() + " already exists.");
+        }
+
+        String accessCode = request.getAccessCode();
+        if (accessCode == null || accessCode.trim().isEmpty()) {
+            accessCode = "WS-" + java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        } else {
+            accessCode = accessCode.trim();
+            if (workshopRepository.findByAccessCode(accessCode).isPresent()) {
+                throw new ConflictException("Workshop access code '" + accessCode + "' is already in use. Please select a unique code.");
+            }
+        }
+
+        // 1. Create and persist Workshop tenant
+        Workshop workshop = Workshop.builder()
+            .name(request.getWorkshopName())
+            .address(request.getWorkshopAddress())
+            .accessCode(accessCode)
+            .build();
+
+        Workshop savedWorkshop = workshopRepository.save(workshop);
+
+        // 2. Create and persist Admin user for the workshop
+        User admin = User.builder()
+            .workshop(savedWorkshop)
+            .firstName(request.getFirstName())
+            .lastName(request.getLastName())
+            .email(request.getEmail())
+            .passwordHash(passwordEncoder.encode(request.getPassword()))
+            .role(Role.ADMIN)
+            .build();
+
+        User savedAdmin = userRepository.save(admin);
+
+        // 3. Issue JWT token
+        UserPrincipal principal = UserPrincipal.create(savedAdmin);
+        String token = jwtUtil.generateToken(principal);
+
+        return AuthResponse.builder()
+            .token(token)
+            .userId(savedAdmin.getUserId())
+            .workshopId(savedWorkshop.getWorkshopId())
+            .workshopName(savedWorkshop.getName())
+            .email(savedAdmin.getEmail())
+            .firstName(savedAdmin.getFirstName())
+            .lastName(savedAdmin.getLastName())
+            .role(Role.ADMIN)
+            .build();
+    }
+
+    /**
+     * Public helper: Retrieves a list of active workshops to allow user-friendly onboarding.
+     */
+    @Transactional(readOnly = true)
+    public java.util.List<WorkshopSummaryResponse> getPublicWorkshops() {
+        return workshopRepository.findAll().stream()
+            .map(w -> WorkshopSummaryResponse.builder()
+                .workshopId(w.getWorkshopId())
+                .name(w.getName())
+                .address(w.getAddress())
+                .accessCode(w.getAccessCode())
+                .build())
+            .toList();
+    }
+
+    /**
+     * Generates a 15-minute cryptographically signed reset token for a user account.
+     */
+    @Transactional(readOnly = true)
+    public ForgotPasswordResponse forgotPassword(ForgotPasswordRequest request) {
+        User user = userRepository.findByEmail(request.getEmail().trim())
+            .orElseThrow(() -> new ResourceNotFoundException("No active account found with email: " + request.getEmail()));
+
+        String resetToken = jwtUtil.generatePasswordResetToken(user.getEmail());
+
+        return ForgotPasswordResponse.builder()
+            .message("Password reset token generated successfully. Valid for 15 minutes.")
+            .resetToken(resetToken)
+            .build();
+    }
+
+    /**
+     * Validates reset token and securely updates the user's password with BCrypt.
+     */
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        String token = request.getResetToken().trim();
+        if (!jwtUtil.validatePasswordResetToken(token)) {
+            throw new com.autocare.exception.BadRequestException("Invalid or expired password reset token. Please request a new one.");
+        }
+
+        String email = jwtUtil.getEmailFromResetToken(token);
+        User user = userRepository.findByEmail(email)
+            .orElseThrow(() -> new ResourceNotFoundException("User associated with this reset token not found."));
+
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+    }
 }
+
+

@@ -2,7 +2,7 @@ import React, { forwardRef } from "react";
 import { clsx } from "clsx";
 
 interface FormInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  label: string;
+  label?: string;
   error?: string;
   helperText?: string;
   icon?: React.ReactNode;
@@ -14,14 +14,17 @@ export const FormInput = forwardRef<HTMLInputElement, FormInputProps>(
 
     return (
       <div className="flex flex-col gap-1.5 w-full">
-        <label
-          htmlFor={inputId}
-          className="text-xs font-semibold uppercase tracking-wider text-zinc-400 flex items-center justify-between"
-        >
-          <span>
-            {label} {required && <span className="text-red-400">*</span>}
-          </span>
-        </label>
+        {label && (
+          <label
+            htmlFor={inputId}
+            className="text-xs font-semibold uppercase tracking-wider text-zinc-400 flex items-center justify-between"
+          >
+            <span>
+              {label} {required && <span className="text-red-400">*</span>}
+            </span>
+          </label>
+        )}
+
 
         <div className="relative flex items-center">
           {icon && (

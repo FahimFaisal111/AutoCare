@@ -37,6 +37,24 @@ public class AuthController {
     }
 
     /**
+     * Public Endpoint: Workshop organization self-registration and initial admin account creation.
+     */
+    @PostMapping("/register/workshop")
+    public ResponseEntity<AuthResponse> registerWorkshop(@Valid @RequestBody WorkshopRegisterRequest request) {
+        AuthResponse response = authService.registerWorkshop(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    /**
+     * Public Endpoint: Retrieve available workshops with access codes for onboarding convenience.
+     */
+    @GetMapping("/workshops")
+    public ResponseEntity<java.util.List<WorkshopSummaryResponse>> getWorkshops() {
+        java.util.List<WorkshopSummaryResponse> workshops = authService.getPublicWorkshops();
+        return ResponseEntity.ok(workshops);
+    }
+
+    /**
      * Public Endpoint: User login for all roles returning stateless JWT.
      */
     @PostMapping("/login")
@@ -44,6 +62,26 @@ public class AuthController {
         AuthResponse response = authService.login(request);
         return ResponseEntity.ok(response);
     }
+
+    /**
+     * Public Endpoint: Request a cryptographically signed password reset token.
+     */
+    @PostMapping("/forgot-password")
+    public ResponseEntity<ForgotPasswordResponse> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        ForgotPasswordResponse response = authService.forgotPassword(request);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Public Endpoint: Reset account password using verified token.
+     */
+    @PostMapping("/reset-password")
+    public ResponseEntity<java.util.Map<String, String>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        authService.resetPassword(request);
+        return ResponseEntity.ok(java.util.Map.of("message", "Password has been successfully updated. You can now sign in with your new password."));
+    }
+
+
 
     /**
      * Authenticated Endpoint: Fetch current user profile with tenant and role context.

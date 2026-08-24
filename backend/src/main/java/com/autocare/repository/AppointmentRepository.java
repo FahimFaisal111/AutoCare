@@ -32,6 +32,16 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Intege
     /**
      * Multi-tenant query: Find all appointments for a given workshop.
      */
-    @Query("SELECT a FROM Appointment a JOIN a.mechanic m WHERE m.workshop.workshopId = :workshopId")
+    @Query("SELECT a FROM Appointment a JOIN a.mechanic m WHERE m.workshop.workshopId = :workshopId ORDER BY a.scheduledStart DESC")
     List<Appointment> findAllByWorkshopId(@Param("workshopId") Integer workshopId);
+
+    @Query("SELECT a FROM Appointment a WHERE a.vehicle.owner.userId = :customerId ORDER BY a.scheduledStart DESC")
+    List<Appointment> findAllByCustomerId(@Param("customerId") Integer customerId);
+
+    @Query("SELECT a FROM Appointment a WHERE a.mechanic.userId = :mechanicId ORDER BY a.scheduledStart DESC")
+    List<Appointment> findAllByMechanicId(@Param("mechanicId") Integer mechanicId);
+
+    @Query("SELECT COUNT(a) FROM Appointment a JOIN a.mechanic m WHERE m.workshop.workshopId = :workshopId AND a.status = :status")
+    long countByWorkshopIdAndStatus(@Param("workshopId") Integer workshopId, @Param("status") String status);
 }
+

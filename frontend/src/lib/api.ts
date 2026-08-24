@@ -29,6 +29,23 @@ export interface UserProfile {
   employeeCode?: string;
 }
 
+export interface WorkshopSummary {
+  workshopId: number;
+  name: string;
+  address: string;
+  accessCode: string;
+}
+
+export interface WorkshopRegisterPayload {
+  workshopName: string;
+  workshopAddress?: string;
+  accessCode?: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+}
+
 export interface CustomerRegisterPayload {
   firstName: string;
   lastName: string;
@@ -50,6 +67,129 @@ export interface MechanicRegisterPayload {
 export interface LoginPayload {
   email: string;
   password: string;
+}
+
+export interface ForgotPasswordPayload {
+  email: string;
+}
+
+export interface ForgotPasswordResponse {
+  message: string;
+  resetToken: string;
+}
+
+export interface ResetPasswordPayload {
+  resetToken: string;
+  newPassword: string;
+}
+
+
+export interface VehiclePayload {
+  vin: string;
+  make: string;
+  model: string;
+  year: number;
+  odometer: number;
+}
+
+export interface Vehicle {
+  vehicleId: number;
+  ownerId: number;
+  ownerName: string;
+  vin: string;
+  make: string;
+  model: string;
+  year: number;
+  odometer: number;
+  createdAt: string;
+}
+
+export interface SolutionReport {
+  solutionId: number;
+  description: string;
+  probableCause: string;
+  recommendedAction: string;
+  urgency: "HIGH" | "MEDIUM" | "LOW";
+  confidenceScore: number;
+  reviewedBy?: number;
+  reviewerName?: string;
+  keywords: string[];
+}
+
+export interface ProblemReportPayload {
+  vehicleId: number;
+  description: string;
+}
+
+export interface ProblemReport {
+  reportId: number;
+  customerId: number;
+  customerName: string;
+  vehicleId: number;
+  vehicleInfo: string;
+  description: string;
+  status: "OPEN" | "RESOLVED";
+  createdAt: string;
+  solution?: SolutionReport;
+}
+
+export interface AppointmentPayload {
+  vehicleId: number;
+  mechanicId: number;
+  reportId?: number;
+  scheduledStart: string;
+  durationMinutes: number;
+  serviceDescription?: string;
+}
+
+export interface AppointmentStatusUpdatePayload {
+  status: "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+  partsCost?: number;
+  laborCost?: number;
+  serviceDescription?: string;
+}
+
+export interface Appointment {
+  appointmentId: number;
+  vehicleId: number;
+  vehicleInfo: string;
+  ownerId: number;
+  ownerName: string;
+  mechanicId: number;
+  mechanicName: string;
+  reportId?: number;
+  scheduledStart: string;
+  durationMinutes: number;
+  status: "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+  serviceDescription?: string;
+  partsCost: number;
+  laborCost: number;
+  totalAmount: number;
+  invoiceStatus?: string;
+  createdAt: string;
+}
+
+export interface Reminder {
+  reminderId: number;
+  vehicleId: number;
+  vehicleInfo: string;
+  reminderType: string;
+  dueDate: string;
+  message: string;
+  status: string;
+}
+
+export interface WorkshopStats {
+  workshopId: number;
+  workshopName: string;
+  workshopAddress: string;
+  accessCode: string;
+  customerCount: number;
+  vehicleCount: number;
+  mechanicCount: number;
+  scheduledAppointmentsCount: number;
+  completedAppointmentsCount: number;
+  totalRevenue: number;
 }
 
 export interface ApiError {
@@ -117,6 +257,19 @@ class ApiClient {
   }
 
   // Auth Endpoints
+  async registerWorkshop(payload: WorkshopRegisterPayload): Promise<AuthResponse> {
+    return this.request<AuthResponse>("/api/auth/register/workshop", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async getWorkshops(): Promise<WorkshopSummary[]> {
+    return this.request<WorkshopSummary[]>("/api/auth/workshops", {
+      method: "GET",
+    });
+  }
+
   async registerCustomer(payload: CustomerRegisterPayload): Promise<AuthResponse> {
     return this.request<AuthResponse>("/api/auth/register/customer", {
       method: "POST",
@@ -138,8 +291,98 @@ class ApiClient {
     });
   }
 
+  async forgotPassword(payload: ForgotPasswordPayload): Promise<ForgotPasswordResponse> {
+    return this.request<ForgotPasswordResponse>("/api/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async resetPassword(payload: ResetPasswordPayload): Promise<{ message: string }> {
+    return this.request<{ message: string }>("/api/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
   async getMe(): Promise<UserProfile> {
+
     return this.request<UserProfile>("/api/auth/me", {
+      method: "GET",
+    });
+  }
+
+  // Vehicles
+  async getVehicles(): Promise<Vehicle[]> {
+    return this.request<Vehicle[]>("/api/vehicles", {
+      method: "GET",
+    });
+  }
+
+  async registerVehicle(payload: VehiclePayload): Promise<Vehicle> {
+    return this.request<Vehicle>("/api/vehicles", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // Problem Reports
+  async getProblemReports(): Promise<ProblemReport[]> {
+    return this.request<ProblemReport[]>("/api/problem-reports", {
+      method: "GET",
+    });
+  }
+
+  async createProblemReport(payload: ProblemReportPayload): Promise<ProblemReport> {
+    return this.request<ProblemReport>("/api/problem-reports", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async reviewProblemReport(reportId: number): Promise<ProblemReport> {
+    return this.request<ProblemReport>(`/api/problem-reports/${reportId}/review`, {
+      method: "PATCH",
+    });
+  }
+
+  // Appointments
+  async getAppointments(): Promise<Appointment[]> {
+    return this.request<Appointment[]>("/api/appointments", {
+      method: "GET",
+    });
+  }
+
+  async createAppointment(payload: AppointmentPayload): Promise<Appointment> {
+    return this.request<Appointment>("/api/appointments", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async updateAppointmentStatus(id: number, payload: AppointmentStatusUpdatePayload): Promise<Appointment> {
+    return this.request<Appointment>(`/api/appointments/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // Reminders
+  async getReminders(): Promise<Reminder[]> {
+    return this.request<Reminder[]>("/api/reminders", {
+      method: "GET",
+    });
+  }
+
+  // Workshop Admin
+  async getWorkshopStats(): Promise<WorkshopStats> {
+    return this.request<WorkshopStats>("/api/workshops/stats", {
+      method: "GET",
+    });
+  }
+
+  async getWorkshopMechanics(): Promise<UserProfile[]> {
+    return this.request<UserProfile[]>("/api/workshops/mechanics", {
       method: "GET",
     });
   }

@@ -1,13 +1,22 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { api, AuthResponse, UserProfile, LoginPayload, CustomerRegisterPayload, MechanicRegisterPayload, ApiError } from "@/lib/api";
+import {
+  api,
+  AuthResponse,
+  UserProfile,
+  LoginPayload,
+  WorkshopRegisterPayload,
+  CustomerRegisterPayload,
+  MechanicRegisterPayload,
+} from "@/lib/api";
 
 interface AuthContextType {
   user: UserProfile | null;
   token: string | null;
   isLoading: boolean;
   login: (payload: LoginPayload) => Promise<AuthResponse>;
+  registerWorkshop: (payload: WorkshopRegisterPayload) => Promise<AuthResponse>;
   registerCustomer: (payload: CustomerRegisterPayload) => Promise<AuthResponse>;
   registerMechanic: (payload: MechanicRegisterPayload) => Promise<AuthResponse>;
   logout: () => void;
@@ -70,6 +79,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return res;
   };
 
+  const registerWorkshop = async (payload: WorkshopRegisterPayload) => {
+    const res = await api.registerWorkshop(payload);
+    saveAuthSession(res);
+    return res;
+  };
+
   const registerCustomer = async (payload: CustomerRegisterPayload) => {
     const res = await api.registerCustomer(payload);
     saveAuthSession(res);
@@ -89,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         token,
         isLoading,
         login,
+        registerWorkshop,
         registerCustomer,
         registerMechanic,
         logout,
