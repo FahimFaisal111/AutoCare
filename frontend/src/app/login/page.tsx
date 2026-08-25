@@ -12,7 +12,7 @@ import { ApiError } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, loginAsDemo } = useAuth();
 
   const [formData, setFormData] = useState({
     email: "",
