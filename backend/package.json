@@ -1,0 +1,26 @@
+{
+  "name": "autocare-backend",
+  "version": "1.0.0",
+  "description": "AutoCare AI Backend - Pure Raw SQL & MySQL 8/9 with Node.js & Express",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "node test/integration-test.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.12.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

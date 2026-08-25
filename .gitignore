@@ -18,3 +18,8 @@ node_modules/
 .DS_Store
 Thumbs.db
 *.log
+
+# Backups & Temp
+backend-springboot-backup/
+__pycache__/
+
