@@ -1,6 +1,6 @@
 /**
  * AutoCare AI - API Client Layer
- * Handles communication with Spring Boot 3 Backend (http://localhost:8080)
+ * Handles communication with Node.js / Express Backend (http://localhost:8080)
  */
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
@@ -251,7 +251,7 @@ class ApiClient {
       throw {
         status: 500,
         error: "Network Error",
-        message: "Unable to connect to backend server. Make sure Spring Boot is running on port 8080.",
+        message: "Unable to connect to backend server. Make sure the Express backend is running on port 8080.",
       } as ApiError;
     }
   }
