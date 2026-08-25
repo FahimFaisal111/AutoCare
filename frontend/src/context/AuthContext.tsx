@@ -16,6 +16,7 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   login: (payload: LoginPayload) => Promise<AuthResponse>;
+  loginAsDemo: (role: "ADMIN" | "MECHANIC" | "CUSTOMER") => void;
   registerWorkshop: (payload: WorkshopRegisterPayload) => Promise<AuthResponse>;
   registerCustomer: (payload: CustomerRegisterPayload) => Promise<AuthResponse>;
   registerMechanic: (payload: MechanicRegisterPayload) => Promise<AuthResponse>;
@@ -31,6 +32,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const saveAuthSession = (auth: AuthResponse) => {
     localStorage.setItem("autocare_token", auth.token);
+    localStorage.removeItem("autocare_demo_role");
     setToken(auth.token);
     setUser({
       userId: auth.userId,
@@ -45,6 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem("autocare_token");
+    localStorage.removeItem("autocare_demo_role");
     setToken(null);
     setUser(null);
   }, []);
@@ -54,6 +57,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const initAuth = async () => {
       const storedToken = localStorage.getItem("autocare_token");
       if (!storedToken) {
+        setIsLoading(false);
+        return;
+      }
+
+      const demoRole = localStorage.getItem("autocare_demo_role") as ("ADMIN" | "MECHANIC" | "CUSTOMER") | null;
+      if (demoRole) {
+        const demoProfiles: Record<string, UserProfile> = {
+          ADMIN: {
+            userId: 1,
+            workshopId: 1,
+            workshopName: "Apex Auto Dynamics (Primary Tenant)",
+            email: "admin@apexauto.com",
+            firstName: "Alexander",
+            lastName: "Wright",
+            role: "ADMIN",
+          },
+          MECHANIC: {
+            userId: 2,
+            workshopId: 1,
+            workshopName: "Apex Auto Dynamics (Primary Tenant)",
+            email: "mechanic@apexauto.com",
+            firstName: "Marcus",
+            lastName: "Vance",
+            role: "MECHANIC",
+            employeeCode: "TECH-9081",
+          },
+          CUSTOMER: {
+            userId: 3,
+            workshopId: 1,
+            workshopName: "Apex Auto Dynamics (Primary Tenant)",
+            email: "customer@apexauto.com",
+            firstName: "Elena",
+            lastName: "Rostova",
+            role: "CUSTOMER",
+            phone: "+1 (555) 234-5678",
+          },
+        };
+        setToken(storedToken);
+        setUser(demoProfiles[demoRole] || demoProfiles.ADMIN);
         setIsLoading(false);
         return;
       }
@@ -77,6 +119,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const res = await api.login(payload);
     saveAuthSession(res);
     return res;
+  };
+
+  const loginAsDemo = (role: "ADMIN" | "MECHANIC" | "CUSTOMER") => {
+    const demoProfiles: Record<string, UserProfile> = {
+      ADMIN: {
+        userId: 1,
+        workshopId: 1,
+        workshopName: "Apex Auto Dynamics (Primary Tenant)",
+        email: "admin@apexauto.com",
+        firstName: "Alexander",
+        lastName: "Wright",
+        role: "ADMIN",
+      },
+      MECHANIC: {
+        userId: 2,
+        workshopId: 1,
+        workshopName: "Apex Auto Dynamics (Primary Tenant)",
+        email: "mechanic@apexauto.com",
+        firstName: "Marcus",
+        lastName: "Vance",
+        role: "MECHANIC",
+        employeeCode: "TECH-9081",
+      },
+      CUSTOMER: {
+        userId: 3,
+        workshopId: 1,
+        workshopName: "Apex Auto Dynamics (Primary Tenant)",
+        email: "customer@apexauto.com",
+        firstName: "Elena",
+        lastName: "Rostova",
+        role: "CUSTOMER",
+        phone: "+1 (555) 234-5678",
+      },
+    };
+
+    const selectedProfile = demoProfiles[role];
+    const demoToken = "demo-jwt-token-" + role.toLowerCase();
+    localStorage.setItem("autocare_token", demoToken);
+    localStorage.setItem("autocare_demo_role", role);
+    setToken(demoToken);
+    setUser(selectedProfile);
   };
 
   const registerWorkshop = async (payload: WorkshopRegisterPayload) => {

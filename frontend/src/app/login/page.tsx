@@ -118,6 +118,50 @@ export default function LoginPage() {
             </>
           )}
         </button>
+
+        {/* 1-Click Instant Demo Login (No Account Creation Needed) */}
+        <div className="pt-4 border-t border-zinc-800/80 space-y-2">
+          <div className="flex items-center justify-center gap-2 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+            <span>⚡ Instant Demo Access (No DB Required)</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                loginAsDemo("ADMIN");
+                router.push("/");
+              }}
+              className="py-2 px-2.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-300 hover:text-purple-200 text-xs font-semibold transition-all text-center flex flex-col items-center gap-1 shadow-sm"
+            >
+              <span>👑 Admin</span>
+              <span className="text-[10px] text-zinc-500">Workshop Telemetry</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                loginAsDemo("MECHANIC");
+                router.push("/");
+              }}
+              className="py-2 px-2.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 hover:text-amber-200 text-xs font-semibold transition-all text-center flex flex-col items-center gap-1 shadow-sm"
+            >
+              <span>🔧 Mechanic</span>
+              <span className="text-[10px] text-zinc-500">Work Orders & AI</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                loginAsDemo("CUSTOMER");
+                router.push("/");
+              }}
+              className="py-2 px-2.5 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 text-sky-300 hover:text-sky-200 text-xs font-semibold transition-all text-center flex flex-col items-center gap-1 shadow-sm"
+            >
+              <span>👤 Customer</span>
+              <span className="text-[10px] text-zinc-500">Fleet & Booking</span>
+            </button>
+          </div>
+        </div>
       </form>
     </AuthCard>
   );
