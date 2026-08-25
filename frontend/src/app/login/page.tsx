@@ -12,7 +12,7 @@ import { ApiError } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, loginAsDemo } = useAuth();
+  const { login } = useAuth();
 
   const [formData, setFormData] = useState({
     email: "",
@@ -59,11 +59,11 @@ export default function LoginPage() {
         </p>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {errorMessage && <AlertMessage type="error" message={errorMessage} />}
 
         <FormInput
-          label="Email Address or Username"
+          label="Username or Email"
           type="text"
           name="email"
           id="login-email"

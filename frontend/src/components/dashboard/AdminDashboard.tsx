@@ -11,6 +11,7 @@ import {
   ApiError,
 } from "@/lib/api";
 import { AlertMessage } from "@/components/AlertMessage";
+import { InvoiceModal } from "@/components/InvoiceModal";
 import {
   Building2,
   Users,
@@ -25,6 +26,7 @@ import {
   TrendingUp,
   CheckCircle2,
   Clock,
+  FileText,
 } from "lucide-react";
 
 export function AdminDashboard() {
@@ -38,135 +40,143 @@ export function AdminDashboard() {
 
   const [copiedCode, setCopiedCode] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "appointments" | "fleet" | "staff">("overview");
+  const [selectedInvoiceAppointment, setSelectedInvoiceAppointment] = useState<Appointment | null>(null);
 
   const loadData = async () => {
     try {
       const [sData, aList, vList, mList] = await Promise.all([
-        api.getWorkshopStats(),
-        api.getAppointments(),
-        api.getVehicles(),
+        api.getWorkshopStats().catch(() => null),
+        api.getAppointments().catch(() => []),
+        api.getVehicles().catch(() => []),
         api.getWorkshopMechanics().catch(() => []),
       ]);
-      setStats(sData);
-      setAppointments(aList);
-      setVehicles(vList);
-      setMechanics(mList);
-    } catch (err) {
-      console.warn("Backend API offline, displaying live tenant telemetry demo mode:", err);
-      // Sensible default demo telemetry matching 3NF Schema and Feature 1
-      setStats({
+
+      const defaultStats: WorkshopStats = {
         workshopId: user?.workshopId || 1,
-        workshopName: user?.workshopName || "Apex Auto Dynamics (Primary Tenant)",
-        workshopAddress: "100 Innovation Parkway, Suite 400, Silicon Valley",
-        accessCode: "APEX-WS-9901",
-        customerCount: 18,
-        vehicleCount: 24,
-        mechanicCount: 6,
-        scheduledAppointmentsCount: 7,
-        completedAppointmentsCount: 42,
-        totalRevenue: 18450.75,
-      });
-      setAppointments([
+        workshopName: user?.workshopName || "Apex Performance Garage",
+        workshopAddress: "742 Evergreen Terrace, Springfield",
+        accessCode: "APEX-2026",
+        customerCount: 14,
+        vehicleCount: 22,
+        mechanicCount: 4,
+        scheduledAppointmentsCount: 3,
+        completedAppointmentsCount: 18,
+        totalRevenue: 4850,
+      };
+
+      setStats(sData || defaultStats);
+      setAppointments(aList.length > 0 ? aList : [
         {
           appointmentId: 101,
           vehicleId: 1,
-          vehicleInfo: "2023 Porsche 911 Carrera (1HGCR2F83HA10001)",
-          ownerId: 3,
-          ownerName: "Elena Rostova",
-          mechanicId: 2,
+          vehicleInfo: "2023 Tesla Model 3",
+          ownerId: 2,
+          ownerName: "Sarah Connor",
+          mechanicId: 3,
           mechanicName: "Marcus Vance",
-          scheduledStart: new Date(Date.now() + 3600000).toISOString(),
+          scheduledStart: new Date(Date.now() + 86400000).toISOString(),
           durationMinutes: 60,
-          status: "IN_PROGRESS",
-          serviceDescription: "Ceramic brake pad replacement and system bleed",
-          partsCost: 320.50,
-          laborCost: 150.00,
-          totalAmount: 470.50,
+          status: "SCHEDULED",
+          partsCost: 150,
+          laborCost: 120,
+          totalAmount: 270,
           invoiceStatus: "PENDING",
           createdAt: new Date().toISOString(),
         },
         {
           appointmentId: 102,
           vehicleId: 2,
-          vehicleInfo: "2022 Ford F-150 Lariat (1FTFW1ED4NFA98765)",
-          ownerId: 4,
-          ownerName: "Diana Prince",
-          mechanicId: 2,
+          vehicleInfo: "2021 Ford F-150",
+          ownerId: 3,
+          ownerName: "John Doe",
+          mechanicId: 3,
           mechanicName: "Marcus Vance",
-          scheduledStart: new Date(Date.now() + 86400000).toISOString(),
+          scheduledStart: new Date(Date.now() - 3600000).toISOString(),
           durationMinutes: 90,
-          status: "SCHEDULED",
-          serviceDescription: "Spark plug replacement and ignition coil diagnosis",
-          partsCost: 180.00,
-          laborCost: 210.00,
-          totalAmount: 390.00,
+          status: "IN_PROGRESS",
+          partsCost: 320,
+          laborCost: 180,
+          totalAmount: 500,
+          invoiceStatus: "PENDING",
           createdAt: new Date().toISOString(),
         },
         {
-          appointmentId: 98,
+          appointmentId: 100,
           vehicleId: 3,
-          vehicleInfo: "2021 Toyota RAV4 Hybrid (2T3F1RFV7MC123456)",
-          ownerId: 5,
-          ownerName: "Charlie Davis",
-          mechanicId: 2,
-          mechanicName: "Marcus Vance",
+          vehicleInfo: "2020 BMW M3",
+          ownerId: 4,
+          ownerName: "Alex Rivera",
+          mechanicId: 4,
+          mechanicName: "Elena Rostova",
           scheduledStart: new Date(Date.now() - 86400000).toISOString(),
-          durationMinutes: 45,
+          durationMinutes: 120,
           status: "COMPLETED",
-          serviceDescription: "Hybrid system multi-point inspection & oil change",
-          partsCost: 95.00,
-          laborCost: 120.00,
-          totalAmount: 215.00,
+          partsCost: 450,
+          laborCost: 250,
+          totalAmount: 700,
           invoiceStatus: "PAID",
-          createdAt: new Date(Date.now() - 86400000).toISOString(),
+          createdAt: new Date().toISOString(),
         }
       ]);
-      setVehicles([
+      setVehicles(vList.length > 0 ? vList : [
         {
           vehicleId: 1,
-          ownerId: 3,
-          ownerName: "Elena Rostova",
-          vin: "1HGCR2F83HA10001",
-          make: "Porsche",
-          model: "911 Carrera",
+          ownerId: 2,
+          ownerName: "Sarah Connor",
+          vin: "1HGCR2F83HA001928",
+          make: "Tesla",
+          model: "Model 3",
           year: 2023,
           odometer: 14200,
           createdAt: new Date().toISOString(),
         },
         {
           vehicleId: 2,
-          ownerId: 4,
-          ownerName: "Diana Prince",
-          vin: "1FTFW1ED4NFA98765",
+          ownerId: 3,
+          ownerName: "John Doe",
+          vin: "1FTFW1ED8MFA90123",
           make: "Ford",
-          model: "F-150 Lariat",
-          year: 2022,
-          odometer: 38400,
+          model: "F-150",
+          year: 2021,
+          odometer: 48500,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          vehicleId: 3,
+          ownerId: 4,
+          ownerName: "Alex Rivera",
+          vin: "WBS8M9C58KFP49182",
+          make: "BMW",
+          model: "M3",
+          year: 2020,
+          odometer: 32100,
           createdAt: new Date().toISOString(),
         }
       ]);
-      setMechanics([
+      setMechanics(mList.length > 0 ? mList : [
         {
-          userId: 2,
+          userId: 3,
           workshopId: 1,
-          workshopName: "Apex Auto Dynamics",
-          email: "marcus.vance@apexauto.com",
+          workshopName: "Apex Performance Garage",
+          email: "marcus@apexperformance.com",
           firstName: "Marcus",
           lastName: "Vance",
           role: "MECHANIC",
-          employeeCode: "TECH-9081",
+          employeeCode: "MEC-001",
         },
         {
-          userId: 6,
+          userId: 4,
           workshopId: 1,
-          workshopName: "Apex Auto Dynamics",
-          email: "bob.miller@apexauto.com",
-          firstName: "Bob",
-          lastName: "Miller",
+          workshopName: "Apex Performance Garage",
+          email: "elena@apexperformance.com",
+          firstName: "Elena",
+          lastName: "Rostova",
           role: "MECHANIC",
-          employeeCode: "TECH-4412",
+          employeeCode: "MEC-002",
         }
       ]);
+    } catch (err) {
+      console.error("Failed to load admin stats", err);
     } finally {
       setIsLoading(false);
     }
@@ -308,33 +318,30 @@ export function AdminDashboard() {
       <div className="flex border-b border-zinc-800 gap-2">
         <button
           onClick={() => setActiveTab("overview")}
-          className={`pb-3 px-4 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === "overview"
+          className={`pb-3 px-4 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${activeTab === "overview"
               ? "border-sky-500 text-sky-400"
               : "border-transparent text-zinc-400 hover:text-zinc-200"
-          }`}
+            }`}
         >
           <Calendar className="w-4 h-4" />
           <span>Workshop Schedule & Work Orders ({appointments.length})</span>
         </button>
         <button
           onClick={() => setActiveTab("fleet")}
-          className={`pb-3 px-4 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === "fleet"
+          className={`pb-3 px-4 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${activeTab === "fleet"
               ? "border-sky-500 text-sky-400"
               : "border-transparent text-zinc-400 hover:text-zinc-200"
-          }`}
+            }`}
         >
           <Car className="w-4 h-4" />
           <span>Customer Vehicle Fleet ({vehicles.length})</span>
         </button>
         <button
           onClick={() => setActiveTab("staff")}
-          className={`pb-3 px-4 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === "staff"
+          className={`pb-3 px-4 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${activeTab === "staff"
               ? "border-sky-500 text-sky-400"
               : "border-transparent text-zinc-400 hover:text-zinc-200"
-          }`}
+            }`}
         >
           <Wrench className="w-4 h-4" />
           <span>Mechanic Staff Directory ({mechanics.length})</span>
@@ -361,6 +368,7 @@ export function AdminDashboard() {
                     <th className="p-3.5">Status</th>
                     <th className="p-3.5">Parts & Labor</th>
                     <th className="p-3.5">Total Invoiced</th>
+                    <th className="p-3.5 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800/60">
@@ -375,13 +383,12 @@ export function AdminDashboard() {
                       </td>
                       <td className="p-3.5">
                         <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
-                            a.status === "COMPLETED"
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold border ${a.status === "COMPLETED"
                               ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                               : a.status === "IN_PROGRESS"
-                              ? "bg-sky-500/10 text-sky-400 border-sky-500/20"
-                              : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                          }`}
+                                ? "bg-sky-500/10 text-sky-400 border-sky-500/20"
+                                : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                            }`}
                         >
                           {a.status}
                         </span>
@@ -389,8 +396,31 @@ export function AdminDashboard() {
                       <td className="p-3.5 font-mono text-zinc-400">
                         ${a.partsCost.toFixed(2)} + ${a.laborCost.toFixed(2)}
                       </td>
-                      <td className="p-3.5 font-mono font-bold text-emerald-400">
-                        ${a.totalAmount.toFixed(2)}
+                      <td className="p-3.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-emerald-400">
+                            ${a.totalAmount.toFixed(2)}
+                          </span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${
+                              (a.invoiceStatus === "PAID" || (!a.invoiceStatus && a.status === "COMPLETED"))
+                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                            }`}
+                          >
+                            {a.invoiceStatus || (a.status === "COMPLETED" ? "PAID" : "PENDING")}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="p-3.5 text-right">
+                        <button
+                          onClick={() => setSelectedInvoiceAppointment(a)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 hover:text-sky-300 border border-sky-500/30 text-xs font-semibold transition-all active:scale-95 shadow-sm"
+                          title="Generate and print invoice receipt"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>Invoice</span>
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -451,6 +481,16 @@ export function AdminDashboard() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Reusable Tax Invoice Receipt Modal */}
+      {selectedInvoiceAppointment && (
+        <InvoiceModal
+          appointment={selectedInvoiceAppointment}
+          workshopName={stats?.workshopName}
+          workshopAddress={stats?.workshopAddress}
+          onClose={() => setSelectedInvoiceAppointment(null)}
+        />
       )}
     </div>
   );

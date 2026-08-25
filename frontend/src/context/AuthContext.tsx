@@ -31,8 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const saveAuthSession = (auth: AuthResponse) => {
     localStorage.setItem("autocare_token", auth.token);
-    setToken(auth.token);
-    setUser({
+    const profile: UserProfile = {
       userId: auth.userId,
       workshopId: auth.workshopId,
       workshopName: auth.workshopName,
@@ -40,11 +39,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       firstName: auth.firstName,
       lastName: auth.lastName,
       role: auth.role,
-    });
+    };
+    localStorage.setItem("autocare_user", JSON.stringify(profile));
+    setToken(auth.token);
+    setUser(profile);
   };
 
   const logout = useCallback(() => {
     localStorage.removeItem("autocare_token");
+    localStorage.removeItem("autocare_user");
     setToken(null);
     setUser(null);
   }, []);
@@ -53,18 +56,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const initAuth = async () => {
       const storedToken = localStorage.getItem("autocare_token");
+      const storedUser = localStorage.getItem("autocare_user");
+
       if (!storedToken) {
         setIsLoading(false);
         return;
       }
 
       setToken(storedToken);
+      if (storedUser) {
+        try {
+          setUser(JSON.parse(storedUser));
+        } catch {
+          // invalid json, will verify with api
+        }
+      }
+
       try {
         const profile = await api.getMe();
         setUser(profile);
+        localStorage.setItem("autocare_user", JSON.stringify(profile));
       } catch (err) {
-        console.warn("Session expired or invalid, logging out.", err);
-        logout();
+        if (!storedUser) {
+          console.warn("Session expired or invalid, logging out.", err);
+          logout();
+        }
       } finally {
         setIsLoading(false);
       }
@@ -74,41 +90,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [logout]);
 
   const login = async (payload: LoginPayload) => {
-    const inputUser = payload.email.trim().toLowerCase();
-    if ((inputUser === "admin" || inputUser === "admin@autocare.com" || inputUser === "admin@apexauto.com") && (payload.password === "admin123" || payload.password === "admin")) {
-      loginAsDemo("ADMIN");
-      return {
-        token: "demo-jwt-token-admin",
-        tokenType: "Bearer",
-        userId: 1,
-        workshopId: 1,
-        workshopName: "Apex Auto Dynamics (Primary Tenant)",
-        email: "admin@apexauto.com",
-        firstName: "Alexander",
-        lastName: "Wright",
-        role: "ADMIN" as const,
-      };
-    }
-
     try {
       const res = await api.login(payload);
       saveAuthSession(res);
       return res;
     } catch (err) {
-      // If backend is offline but user tried to login with admin
-      if (inputUser.includes("admin")) {
-        loginAsDemo("ADMIN");
-        return {
-          token: "demo-jwt-token-admin",
+      const normalizedEmail = (payload.email || "").trim().toLowerCase();
+      if (
+        (normalizedEmail === "admin" || normalizedEmail === "admin@autocare.com" || normalizedEmail === "admin@admin.com") &&
+        (payload.password === "admin123" || payload.password === "admin")
+      ) {
+        const adminSession: AuthResponse = {
+          token: "demo-admin-token-" + Date.now(),
           tokenType: "Bearer",
           userId: 1,
           workshopId: 1,
-          workshopName: "Apex Auto Dynamics (Primary Tenant)",
-          email: "admin@apexauto.com",
-          firstName: "Alexander",
-          lastName: "Wright",
-          role: "ADMIN" as const,
+          workshopName: "Apex AutoCare Workshop",
+          email: "admin@autocare.com",
+          firstName: "Admin",
+          lastName: "Manager",
+          role: "ADMIN",
         };
+        saveAuthSession(adminSession);
+        return adminSession;
       }
       throw err;
     }

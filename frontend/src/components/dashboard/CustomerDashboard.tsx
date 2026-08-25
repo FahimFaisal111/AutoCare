@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import { FormInput } from "@/components/FormInput";
 import { AlertMessage } from "@/components/AlertMessage";
+import { InvoiceModal } from "@/components/InvoiceModal";
 import {
   Car,
   Plus,
@@ -45,6 +46,7 @@ export function CustomerDashboard() {
   const [showAddVehicleModal, setShowAddVehicleModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showBookModal, setShowBookModal] = useState(false);
+  const [selectedInvoiceAppointment, setSelectedInvoiceAppointment] = useState<Appointment | null>(null);
 
   // Form states
   const [vehicleForm, setVehicleForm] = useState({
@@ -574,12 +576,21 @@ export function CustomerDashboard() {
                     </div>
 
                     {a.status === "COMPLETED" && (
-                      <div className="p-3 bg-zinc-950/80 rounded-xl border border-zinc-800 text-right space-y-0.5">
-                        <span className="text-[10px] text-zinc-500 font-semibold block">Total Invoice</span>
-                        <span className="text-base font-extrabold text-emerald-400 font-mono">
-                          ${a.totalAmount.toFixed(2)}
-                        </span>
-                        <span className="text-[10px] text-zinc-400 block">Status: {a.invoiceStatus}</span>
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 bg-zinc-950/80 rounded-xl border border-zinc-800 text-right space-y-0.5">
+                          <span className="text-[10px] text-zinc-500 font-semibold block">Total Invoice</span>
+                          <span className="text-base font-extrabold text-emerald-400 font-mono">
+                            ${a.totalAmount.toFixed(2)}
+                          </span>
+                          <span className="text-[10px] text-zinc-400 block">Status: {a.invoiceStatus || "PAID"}</span>
+                        </div>
+                        <button
+                          onClick={() => setSelectedInvoiceAppointment(a)}
+                          className="p-2.5 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center transition-all active:scale-95 shadow-sm"
+                          title="View and Print Invoice Receipt"
+                        >
+                          <FileText className="w-5 h-5" />
+                        </button>
                       </div>
                     )}
                   </div>
@@ -849,6 +860,15 @@ export function CustomerDashboard() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Tax Invoice Receipt Modal */}
+      {selectedInvoiceAppointment && (
+        <InvoiceModal
+          appointment={selectedInvoiceAppointment}
+          workshopName={user?.workshopName}
+          onClose={() => setSelectedInvoiceAppointment(null)}
+        />
       )}
     </div>
   );
