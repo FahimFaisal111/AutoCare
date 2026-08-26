@@ -9,7 +9,7 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
-const { testConnection } = require('./config/db');
+const { testConnection, pool } = require('./config/db');
 const routes = require('./routes');
 const { errorHandler, NotFoundError } = require('./middleware/errorHandler');
 
@@ -40,6 +40,16 @@ app.get('/health', (req, res) => {
 });
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'UP', service: 'autocare-backend', timestamp: new Date().toISOString() });
+});
+
+// Readiness probe: confirms the process is up AND the MySQL pool can serve a query.
+app.get('/api/ready', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.status(200).json({ status: 'READY', db: 'UP', timestamp: new Date().toISOString() });
+  } catch (error) {
+    res.status(503).json({ status: 'NOT_READY', db: 'DOWN', error: error.message, timestamp: new Date().toISOString() });
+  }
 });
 
 // 4. API Routes

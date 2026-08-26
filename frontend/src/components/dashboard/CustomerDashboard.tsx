@@ -27,7 +27,95 @@ import {
   ShieldCheck,
   FileText,
   UserCheck,
+  Activity,
 } from "lucide-react";
+
+/**
+ * Rule-based Vehicle Health Score.
+ * Deterministic (not a live AI call) — computed entirely from data already
+ * fetched for this dashboard: open problem reports (weighted by AI-assessed
+ * urgency where available), active maintenance reminders, and how recently
+ * the vehicle was last serviced.
+ */
+function computeVehicleHealth(
+  vehicleId: number,
+  reports: ProblemReport[],
+  appointments: Appointment[],
+  reminders: Reminder[]
+) {
+  let score = 100;
+  const breakdown: string[] = [];
+
+  // 1. Open problem reports, weighted by urgency
+  const openReports = reports.filter((r) => r.vehicleId === vehicleId && r.status === "OPEN");
+  if (openReports.length > 0) {
+    let penalty = 0;
+    openReports.forEach((r) => {
+      const urgency = r.solution?.urgency;
+      penalty += urgency === "HIGH" ? 25 : urgency === "MEDIUM" ? 15 : urgency === "LOW" ? 8 : 10;
+    });
+    score -= penalty;
+    const hasHigh = openReports.some((r) => r.solution?.urgency === "HIGH");
+    breakdown.push(
+      `-${penalty} pts — ${openReports.length} open problem report${openReports.length > 1 ? "s" : ""}${hasHigh ? " (includes HIGH urgency)" : ""}`
+    );
+  } else {
+    breakdown.push("+0 pts — no open problem reports");
+  }
+
+  // 2. Active maintenance reminders
+  const activeReminders = reminders.filter((rem) => rem.vehicleId === vehicleId && rem.status === "ACTIVE");
+  if (activeReminders.length > 0) {
+    const penalty = activeReminders.length * 5;
+    score -= penalty;
+    breakdown.push(`-${penalty} pts — ${activeReminders.length} active maintenance reminder${activeReminders.length > 1 ? "s" : ""}`);
+  } else {
+    breakdown.push("+0 pts — no active reminders");
+  }
+
+  // 3. Recency of last completed service
+  const completedLogs = appointments
+    .filter((a) => a.vehicleId === vehicleId && a.status === "COMPLETED")
+    .sort((a, b) => new Date(b.scheduledStart).getTime() - new Date(a.scheduledStart).getTime());
+
+  if (completedLogs.length === 0) {
+    score -= 10;
+    breakdown.push("-10 pts — no completed service on record yet");
+  } else {
+    const monthsSince = (Date.now() - new Date(completedLogs[0].scheduledStart).getTime()) / (1000 * 60 * 60 * 24 * 30);
+    if (monthsSince > 12) {
+      score -= 15;
+      breakdown.push("-15 pts — last service was over 12 months ago");
+    } else if (monthsSince > 6) {
+      score -= 5;
+      breakdown.push("-5 pts — last service was over 6 months ago");
+    } else {
+      breakdown.push("+0 pts — serviced within the last 6 months");
+    }
+  }
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
+  let label: string, textClass: string, barClass: string, chipClass: string;
+  if (score >= 85) {
+    label = "Excellent"; textClass = "text-emerald-400"; barClass = "bg-emerald-500";
+    chipClass = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+  } else if (score >= 65) {
+    label = "Good"; textClass = "text-sky-400"; barClass = "bg-sky-500";
+    chipClass = "bg-sky-500/10 text-sky-400 border-sky-500/20";
+  } else if (score >= 45) {
+    label = "Fair"; textClass = "text-amber-400"; barClass = "bg-amber-500";
+    chipClass = "bg-amber-500/10 text-amber-400 border-amber-500/20";
+  } else if (score >= 25) {
+    label = "Needs Attention"; textClass = "text-orange-400"; barClass = "bg-orange-500";
+    chipClass = "bg-orange-500/10 text-orange-400 border-orange-500/20";
+  } else {
+    label = "Critical"; textClass = "text-rose-400"; barClass = "bg-rose-500";
+    chipClass = "bg-rose-500/10 text-rose-400 border-rose-500/20";
+  }
+
+  return { score, label, textClass, barClass, chipClass, breakdown };
+}
 
 export function CustomerDashboard() {
   const { user } = useAuth();
@@ -45,6 +133,7 @@ export function CustomerDashboard() {
   const [showAddVehicleModal, setShowAddVehicleModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showBookModal, setShowBookModal] = useState(false);
+  const [healthVehicle, setHealthVehicle] = useState<Vehicle | null>(null);
 
   // Form states
   const [vehicleForm, setVehicleForm] = useState({
@@ -331,27 +420,36 @@ export function CustomerDashboard() {
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-zinc-800/80 flex items-center gap-2">
+                  <div className="pt-2 border-t border-zinc-800/80 space-y-2">
                     <button
-                      onClick={() => {
-                        setReportForm({ vehicleId: v.vehicleId, description: "" });
-                        setShowReportModal(true);
-                      }}
-                      className="flex-1 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sky-400 hover:text-sky-300 text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
+                      onClick={() => setHealthVehicle(v)}
+                      className="w-full py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
                     >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>Diagnose</span>
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>Vehicle Health Dashboard</span>
                     </button>
-                    <button
-                      onClick={() => {
-                        setBookForm((prev) => ({ ...prev, vehicleId: v.vehicleId }));
-                        setShowBookModal(true);
-                      }}
-                      className="flex-1 py-1.5 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
-                    >
-                      <Calendar className="w-3.5 h-3.5" />
-                      <span>Book</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setReportForm({ vehicleId: v.vehicleId, description: "" });
+                          setShowReportModal(true);
+                        }}
+                        className="flex-1 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sky-400 hover:text-sky-300 text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Diagnose</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setBookForm((prev) => ({ ...prev, vehicleId: v.vehicleId }));
+                          setShowBookModal(true);
+                        }}
+                        className="flex-1 py-1.5 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span>Book</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -847,6 +945,219 @@ export function CustomerDashboard() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* MODAL 4: Vehicle Health Dashboard */}
+      {healthVehicle && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div className="flex items-center gap-2 text-zinc-100 font-bold text-base">
+                <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                <span>Vehicle Health Dashboard</span>
+              </div>
+              <button
+                onClick={() => setHealthVehicle(null)}
+                className="text-zinc-500 hover:text-zinc-300 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Vehicle Profile */}
+            <div className="p-4 rounded-xl bg-zinc-950/60 border border-zinc-800 space-y-2">
+              <h3 className="text-lg font-bold text-zinc-100">
+                {healthVehicle.year} {healthVehicle.make} {healthVehicle.model}
+              </h3>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="flex justify-between text-zinc-400">
+                  <span>VIN:</span>
+                  <span className="font-mono text-zinc-300 font-semibold">{healthVehicle.vin}</span>
+                </div>
+                <div className="flex justify-between text-zinc-400">
+                  <span>Odometer:</span>
+                  <span className="text-zinc-300 font-semibold">{healthVehicle.odometer.toLocaleString()} mi</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Vehicle Health Score */}
+            {(() => {
+              const health = computeVehicleHealth(healthVehicle.vehicleId, reports, appointments, reminders);
+              return (
+                <div className="p-4 rounded-xl bg-zinc-950/60 border border-zinc-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Activity className={`w-4 h-4 ${health.textClass}`} />
+                      <h4 className="text-sm font-bold text-zinc-200">Vehicle Health Score</h4>
+                    </div>
+                    <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${health.chipClass}`}>
+                      {health.label}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span className={`text-2xl font-extrabold font-mono ${health.textClass}`}>{health.score}%</span>
+                    <div className="flex-1 h-2.5 rounded-full bg-zinc-800 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${health.barClass} transition-all`}
+                        style={{ width: `${health.score}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <ul className="space-y-1 pt-2 border-t border-zinc-800/80">
+                    {health.breakdown.map((line, i) => (
+                      <li key={i} className="text-[11px] text-zinc-500 font-mono">
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-[10px] text-zinc-600 italic">
+                    Rule-based score from this vehicle&apos;s open reports, active reminders, and service recency — not a live AI call.
+                  </p>
+                </div>
+              );
+            })()}
+
+            {/* Open Problem Reports */}
+            {(() => {
+              const openReports = reports.filter(
+                (r) => r.vehicleId === healthVehicle.vehicleId && r.status === "OPEN"
+              );
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-amber-400" />
+                    <h4 className="text-sm font-bold text-zinc-200">
+                      Open Problem Reports ({openReports.length})
+                    </h4>
+                  </div>
+                  {openReports.length === 0 ? (
+                    <div className="p-3 rounded-xl bg-zinc-950/40 border border-zinc-800 text-xs text-zinc-500">
+                      No open problem reports for this vehicle.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {openReports.map((r) => (
+                        <div
+                          key={r.reportId}
+                          className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800 text-xs space-y-1"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-zinc-500 font-mono">Report #{r.reportId}</span>
+                            {r.solution && (
+                              <span
+                                className={`px-2 py-0.5 rounded-full font-semibold border ${
+                                  r.solution.urgency === "HIGH"
+                                    ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                                    : r.solution.urgency === "MEDIUM"
+                                    ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                                    : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                }`}
+                              >
+                                {r.solution.urgency}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-zinc-300">{r.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Historical Service Logs */}
+            {(() => {
+              const serviceLogs = appointments
+                .filter((a) => a.vehicleId === healthVehicle.vehicleId && a.status === "COMPLETED")
+                .sort((a, b) => new Date(b.scheduledStart).getTime() - new Date(a.scheduledStart).getTime());
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Wrench className="w-4 h-4 text-sky-400" />
+                    <h4 className="text-sm font-bold text-zinc-200">
+                      Historical Service Logs ({serviceLogs.length})
+                    </h4>
+                  </div>
+                  {serviceLogs.length === 0 ? (
+                    <div className="p-3 rounded-xl bg-zinc-950/40 border border-zinc-800 text-xs text-zinc-500">
+                      No completed service history yet for this vehicle.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {serviceLogs.map((a) => (
+                        <div
+                          key={a.appointmentId}
+                          className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800 text-xs space-y-1"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="flex items-center gap-1 text-emerald-400 font-semibold">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              {new Date(a.scheduledStart).toLocaleDateString()}
+                            </span>
+                            <span className="text-zinc-300 font-mono font-bold">
+                              ${a.totalAmount.toFixed(2)}
+                            </span>
+                          </div>
+                          {a.serviceDescription && (
+                            <p className="text-zinc-400">{a.serviceDescription}</p>
+                          )}
+                          <div className="flex gap-3 text-[11px] text-zinc-500">
+                            <span>Technician: {a.mechanicName}</span>
+                            <span>Parts: ${a.partsCost.toFixed(2)}</span>
+                            <span>Labor: ${a.laborCost.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Active Maintenance Reminders */}
+            {(() => {
+              const activeReminders = reminders.filter(
+                (rem) => rem.vehicleId === healthVehicle.vehicleId && rem.status === "ACTIVE"
+              );
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-400" />
+                    <h4 className="text-sm font-bold text-zinc-200">
+                      Active Maintenance Reminders ({activeReminders.length})
+                    </h4>
+                  </div>
+                  {activeReminders.length === 0 ? (
+                    <div className="p-3 rounded-xl bg-zinc-950/40 border border-zinc-800 text-xs text-zinc-500">
+                      No active maintenance reminders for this vehicle.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {activeReminders.map((rem) => (
+                        <div
+                          key={rem.reminderId}
+                          className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800 flex items-start gap-2 text-xs"
+                        >
+                          <Clock className="w-3.5 h-3.5 text-amber-400 mt-0.5" />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-zinc-200">{rem.reminderType}</span>
+                              <span className="text-[11px] text-zinc-500 font-mono">Due: {rem.dueDate}</span>
+                            </div>
+                            <p className="text-zinc-400 text-[11px]">{rem.message}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
