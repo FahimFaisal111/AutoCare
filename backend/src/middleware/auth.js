@@ -6,7 +6,10 @@
 const jwt = require('jsonwebtoken');
 const { UnauthorizedError, ForbiddenError } = require('./errorHandler');
 
-const JWT_SECRET = process.env.JWT_SECRET || '404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required but was not set. Refusing to start with an insecure default.');
+}
 
 /**
  * Middleware: Verifies JWT in Authorization Bearer header
