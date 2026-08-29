@@ -64,18 +64,18 @@ export default function WorkshopRegisterPage() {
       footer={
         <p>
           Already have a workshop registered?{" "}
-          <Link href="/login" className="font-semibold text-sky-400 hover:text-sky-300 transition-colors">
+          <Link href="/login" className="font-semibold text-[#635bff] hover:underline">
             Sign In
           </Link>
         </p>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-3.5">
+      <form onSubmit={handleSubmit} className="space-y-5">
         {errorMessage && <AlertMessage type="error" message={errorMessage} />}
 
         {/* Workshop Organization Details */}
-        <div className="p-3 bg-zinc-950/60 rounded-xl border border-zinc-800/80 space-y-3">
-          <span className="text-xs font-bold text-sky-400 uppercase tracking-wider block">
+        <div className="p-4 bg-gray-50/80 border border-gray-200 rounded-xl space-y-3">
+          <span className="text-xs font-bold text-[#635bff] uppercase tracking-wider block">
             Workshop Information
           </span>
 
@@ -116,8 +116,8 @@ export default function WorkshopRegisterPage() {
         </div>
 
         {/* Workshop Admin Account */}
-        <div className="p-3 bg-zinc-950/60 rounded-xl border border-zinc-800/80 space-y-3">
-          <span className="text-xs font-bold text-sky-400 uppercase tracking-wider block">
+        <div className="p-4 bg-gray-50/80 border border-gray-200 rounded-xl space-y-3">
+          <span className="text-xs font-bold text-[#635bff] uppercase tracking-wider block">
             Administrator Credentials
           </span>
 
@@ -177,7 +177,7 @@ export default function WorkshopRegisterPage() {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full mt-2 py-2.5 px-4 rounded-lg bg-sky-500 hover:bg-sky-400 text-zinc-950 font-bold text-sm shadow-md transition-all duration-150 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+          className="w-full mt-2 py-3 px-5 rounded-lg bg-[#635bff] hover:bg-[#5349e0] text-white font-semibold text-sm shadow-[0_2px_4px_rgba(99,91,255,0.2),0_4px_8px_rgba(99,91,255,0.2)] hover:-translate-y-0.5 hover:shadow-[0_4px_8px_rgba(99,91,255,0.3),0_8px_16px_rgba(99,91,255,0.25)] active:translate-y-0 active:scale-[0.98] transition-all duration-[300ms] ease-out flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSubmitting ? (
             <>

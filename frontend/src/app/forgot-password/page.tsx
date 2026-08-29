@@ -2,16 +2,13 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { AuthCard } from "@/components/AuthCard";
 import { FormInput } from "@/components/FormInput";
 import { AlertMessage } from "@/components/AlertMessage";
-import { Mail, Lock, Key, Loader2, ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
+import { Mail, Lock, Loader2, ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 
 export default function ForgotPasswordPage() {
-  const router = useRouter();
-
   const [step, setStep] = useState<"request" | "reset" | "complete">("request");
   const [email, setEmail] = useState("");
   const [resetToken, setResetToken] = useState("");
@@ -70,7 +67,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthCard
-      title="Reset Your Password"
+      title="Reset Password"
       subtitle={
         step === "request"
           ? "Enter your account email to receive a password recovery token"
@@ -81,7 +78,7 @@ export default function ForgotPasswordPage() {
       footer={
         <p>
           Remember your password?{" "}
-          <Link href="/login" className="font-semibold text-sky-400 hover:text-sky-300 transition-colors">
+          <Link href="/login" className="font-semibold text-[#635bff] hover:underline">
             Back to Sign In
           </Link>
         </p>
@@ -107,13 +104,13 @@ export default function ForgotPasswordPage() {
               if (errorMessage) setErrorMessage("");
             }}
             icon={<Mail className="w-4 h-4" />}
-            helperText="Enter the email associated with your Customer, Mechanic, or Admin account"
+            helperText="Enter the email associated with your account"
           />
 
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full mt-2 py-2.5 px-4 rounded-lg bg-sky-500 hover:bg-sky-400 text-zinc-950 font-bold text-sm shadow-md transition-all duration-150 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+            className="w-full mt-2 py-3 px-5 rounded-lg bg-[#635bff] hover:bg-[#5349e0] text-white font-semibold text-sm shadow-[0_2px_4px_rgba(99,91,255,0.2),0_4px_8px_rgba(99,91,255,0.2)] hover:-translate-y-0.5 hover:shadow-[0_4px_8px_rgba(99,91,255,0.3),0_8px_16px_rgba(99,91,255,0.25)] active:translate-y-0 active:scale-[0.98] transition-all duration-[300ms] ease-out flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSubmitting ? (
               <>
@@ -132,12 +129,12 @@ export default function ForgotPasswordPage() {
 
       {/* Step 2: Enter New Password */}
       {step === "reset" && (
-        <form onSubmit={handleResetPassword} className="space-y-3.5">
-          <div className="p-3 bg-zinc-950/60 rounded-xl border border-zinc-800/80 flex items-center gap-2.5">
-            <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-            <div className="text-xs text-zinc-300">
-              <span className="text-zinc-500 block text-[11px]">Resetting password for:</span>
-              <strong className="text-zinc-100">{email}</strong>
+        <form onSubmit={handleResetPassword} className="space-y-4">
+          <div className="p-3.5 bg-gray-50 border border-gray-200 rounded-lg flex items-center gap-2.5">
+            <ShieldCheck className="w-5 h-5 text-[#00d4ff] flex-shrink-0" />
+            <div className="text-xs text-gray-700">
+              <span className="text-gray-500 block text-[11px]">Resetting password for:</span>
+              <strong className="text-[#0a2540]">{email}</strong>
             </div>
           </div>
 
@@ -176,7 +173,7 @@ export default function ForgotPasswordPage() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full mt-2 py-2.5 px-4 rounded-lg bg-sky-500 hover:bg-sky-400 text-zinc-950 font-bold text-sm shadow-md transition-all duration-150 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+            className="w-full mt-2 py-3 px-5 rounded-lg bg-[#635bff] hover:bg-[#5349e0] text-white font-semibold text-sm shadow-[0_2px_4px_rgba(99,91,255,0.2),0_4px_8px_rgba(99,91,255,0.2)] hover:-translate-y-0.5 hover:shadow-[0_4px_8px_rgba(99,91,255,0.3),0_8px_16px_rgba(99,91,255,0.25)] active:translate-y-0 active:scale-[0.98] transition-all duration-[300ms] ease-out flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSubmitting ? (
               <>
@@ -196,20 +193,20 @@ export default function ForgotPasswordPage() {
       {/* Step 3: Complete */}
       {step === "complete" && (
         <div className="text-center py-4 space-y-4">
-          <div className="w-12 h-12 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center mx-auto">
+          <div className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center mx-auto">
             <CheckCircle2 className="w-6 h-6" />
           </div>
 
           <div className="space-y-1">
-            <h3 className="text-base font-bold text-zinc-100">Password Successfully Updated</h3>
-            <p className="text-xs text-zinc-400 max-w-xs mx-auto">
-              Your password has been changed and securely encrypted in the database. You can now sign in with your new credentials.
+            <h3 className="text-base font-bold text-[#0a2540]">Password Successfully Updated</h3>
+            <p className="text-xs text-gray-500 max-w-xs mx-auto leading-relaxed">
+              Your password has been securely updated. You can now sign in with your new credentials.
             </p>
           </div>
 
           <Link
             href="/login"
-            className="w-full py-2.5 px-4 rounded-lg bg-sky-500 hover:bg-sky-400 text-zinc-950 font-bold text-sm shadow-md transition-all duration-150 inline-flex items-center justify-center gap-2 active:scale-[0.98]"
+            className="w-full mt-2 py-3 px-5 rounded-lg bg-[#635bff] hover:bg-[#5349e0] text-white font-semibold text-sm shadow-[0_2px_4px_rgba(99,91,255,0.2),0_4px_8px_rgba(99,91,255,0.2)] hover:-translate-y-0.5 hover:shadow-[0_4px_8px_rgba(99,91,255,0.3),0_8px_16px_rgba(99,91,255,0.25)] active:translate-y-0 active:scale-[0.98] transition-all duration-[300ms] ease-out inline-flex items-center justify-center gap-2"
           >
             <span>Proceed to Sign In</span>
             <ArrowRight className="w-4 h-4" />
