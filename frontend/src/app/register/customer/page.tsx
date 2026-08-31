@@ -79,17 +79,17 @@ export default function CustomerRegisterPage() {
   return (
     <AuthCard
       title="Create Customer Account"
-      subtitle="Register with your workshop's unique access code"
+      subtitle="Register to access vehicle telemetry and AI diagnostics"
       footer={
         <p>
           Already have an account?{" "}
-          <Link href="/login" className="font-semibold text-sky-400 hover:text-sky-300 transition-colors">
+          <Link href="/login" className="font-semibold text-[#635bff] hover:underline">
             Sign In
           </Link>
         </p>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-3.5">
+      <form onSubmit={handleSubmit} className="space-y-4">
         {errorMessage && <AlertMessage type="error" message={errorMessage} />}
 
         <div className="grid grid-cols-2 gap-3">
@@ -145,7 +145,7 @@ export default function CustomerRegisterPage() {
         />
 
         {/* Dynamic Workshop Picker */}
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           <FormInput
             label="Workshop Access Code"
             name="workshopAccessCode"
@@ -155,24 +155,24 @@ export default function CustomerRegisterPage() {
             value={formData.workshopAccessCode}
             onChange={handleChange}
             error={validationErrors.workshopAccessCode}
-            helperText="Enter your shop code or pick an active workshop below"
+            helperText="Enter your workshop code or pick an active shop"
             icon={<Key className="w-4 h-4" />}
           />
 
           {availableWorkshops.length > 0 && (
             <div className="pt-1 flex flex-wrap gap-1.5 items-center">
-              <span className="text-[11px] text-zinc-500 flex items-center gap-1">
-                <Building2 className="w-3 h-3" /> Quick Select:
+              <span className="text-xs text-gray-500 font-medium flex items-center gap-1">
+                <Building2 className="w-3.5 h-3.5 text-[#635bff]" /> Quick Select:
               </span>
               {availableWorkshops.map((ws) => (
                 <button
                   type="button"
                   key={ws.workshopId}
                   onClick={() => handleSelectWorkshop(ws.accessCode)}
-                  className={`text-[11px] px-2 py-0.5 rounded border transition-colors ${
+                  className={`text-xs px-2.5 py-1 rounded-full font-semibold border transition-all ${
                     formData.workshopAccessCode === ws.accessCode
-                      ? "bg-sky-500/20 border-sky-500/40 text-sky-300 font-semibold"
-                      : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-300"
+                      ? "bg-[#635bff] text-white border-[#635bff] shadow-sm"
+                      : "bg-white text-[#0a2540] hover:bg-gray-50 border-gray-200"
                   }`}
                 >
                   {ws.name} ({ws.accessCode})
@@ -197,7 +197,7 @@ export default function CustomerRegisterPage() {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full mt-3 py-2.5 px-4 rounded-lg bg-sky-500 hover:bg-sky-400 text-zinc-950 font-bold text-sm shadow-md transition-all duration-150 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+          className="w-full mt-2 py-3 px-5 rounded-lg bg-[#635bff] hover:bg-[#5349e0] text-white font-semibold text-sm shadow-[0_2px_4px_rgba(99,91,255,0.2),0_4px_8px_rgba(99,91,255,0.2)] hover:-translate-y-0.5 hover:shadow-[0_4px_8px_rgba(99,91,255,0.3),0_8px_16px_rgba(99,91,255,0.25)] active:translate-y-0 active:scale-[0.98] transition-all duration-[300ms] ease-out flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSubmitting ? (
             <>

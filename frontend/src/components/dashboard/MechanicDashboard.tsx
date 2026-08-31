@@ -18,15 +18,15 @@ import { hasNewMessage, findActivity } from "@/lib/unreadTracker";
 import { PartLine, buildServiceDescription, parseServiceDescription, sumParts } from "@/lib/serviceLog";
 import {
   Wrench,
-  Clock,
-  CheckCircle2,
-  BrainCircuit,
-  Loader2,
-  DollarSign,
-  UserCheck,
   Calendar,
-  AlertCircle,
+  CheckCircle2,
+  Clock,
+  DollarSign,
+  Loader2,
   FileCheck,
+  BrainCircuit,
+  X,
+  AlertCircle,
   MessageCircle,
   Plus,
   Bell,
@@ -40,21 +40,20 @@ export function MechanicDashboard() {
   /*Comment : Same "who has an unread message" data source CustomerDashboard uses - one shared endpoint, so both sides of a conversation agree on what counts as new. */
   const [latestActivity, setLatestActivity] = useState<LatestActivity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"queue" | "diagnostics">("queue");
 
-  // Status update modal
-  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
-  /*Comment : The customer's original request, parsed out of the currently-open appointment - shown to the mechanic read-only for context, and carried forward unedited on save. This is the actual fix: it used to just live in the same field as the mechanic's own notes, so saving overwrote it; now it's tracked separately from statusForm and never touched by anything the mechanic types. */
+  // Active work order update modal
+  const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
+  const [apptStatus, setApptStatus] = useState<"SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED">("SCHEDULED");
+  /*Comment : The customer's original request, parsed out of the currently-open appointment - shown to the mechanic read-only for context, and carried forward unedited on save. This is the actual fix for the bug where the mechanic's own save used to overwrite the customer's note entirely, since both used to share one raw text field. */
   const [viewingCustomerRequest, setViewingCustomerRequest] = useState("");
+  /*Comment : "parts" replaces a single partsCost number - the mechanic builds an itemized list (name + cost per row, like adding poll options) instead of typing one aggregate figure. laborCost stays its own separate field, unchanged. */
+  const [parts, setParts] = useState<PartLine[]>([{ name: "", cost: 0 }]);
+  const [laborCost, setLaborCost] = useState(0);
+  /*Comment : The free-text narrative only - never the combined description. Combined right before the request goes out, in handleUpdateAppt, via buildServiceDescription. */
+  const [narrative, setNarrative] = useState("");
+
   /*Comment : Which appointment's message thread is open right now, if any - Hero Feature 7, mirrors the same state/component CustomerDashboard uses, so both sides of the conversation share one implementation. */
   const [chatAppointment, setChatAppointment] = useState<Appointment | null>(null);
-  /*Comment : "parts" replaces the old single partsCost number - the mechanic now builds an itemized list (name + cost per row, like adding poll options) instead of typing one aggregate figure. serviceDescription here holds ONLY the free-text narrative; the two are combined into one string right before the request goes out, via buildServiceDescription. */
-  const [statusForm, setStatusForm] = useState({
-    status: "IN_PROGRESS" as "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED",
-    parts: [{ name: "", cost: 0 }] as PartLine[],
-    laborCost: 0,
-    serviceDescription: "",
-  });
 
   const [actionError, setActionError] = useState("");
   const [actionSuccess, setActionSuccess] = useState("");
@@ -71,7 +70,7 @@ export function MechanicDashboard() {
       setReports(rList);
       setLatestActivity(activityList);
     } catch (err) {
-      console.error("Failed to load mechanic workspace", err);
+      console.error("Failed to load technician data", err);
     } finally {
       setIsLoading(false);
     }
@@ -81,88 +80,74 @@ export function MechanicDashboard() {
     loadData();
   }, []);
 
-  /*Comment : Reopening an appointment (e.g. it was already saved as IN_PROGRESS and the mechanic is coming back to finish it) needs to split its stored service_description back apart, so any parts already logged last time show up as editable rows again instead of being lost. */
-  const handleOpenUpdateModal = (appt: Appointment) => {
-    setSelectedAppointment(appt);
+  /*Comment : Reopening an appointment needs to split its stored service_description back apart, so any parts already logged last time show up as editable rows again, and the customer's original request re-appears as read-only context instead of being lost. */
+  const handleOpenApptModal = (appt: Appointment) => {
+    setSelectedAppt(appt);
+    setApptStatus(appt.status as any);
     const parsed = parseServiceDescription(appt.serviceDescription);
     setViewingCustomerRequest(parsed.customerRequest);
-    setStatusForm({
-      status: appt.status === "SCHEDULED" ? "IN_PROGRESS" : "COMPLETED",
-      parts: parsed.parts.length > 0 ? parsed.parts : [{ name: "", cost: 0 }],
-      laborCost: appt.laborCost || 0,
-      serviceDescription: parsed.narrative,
-    });
+    setParts(parsed.parts.length > 0 ? parsed.parts : [{ name: "", cost: 0 }]);
+    setNarrative(parsed.narrative);
+    setLaborCost(appt.laborCost || 0);
     setActionError("");
     setActionSuccess("");
   };
 
-  /*Comment : Row-management for the parts list - append a blank row, remove one by index, or edit one field of one row. Kept as three small focused helpers rather than one do-everything function, so each button's onClick stays a one-liner. */
-  const addPartRow = () => {
-    setStatusForm((p) => ({ ...p, parts: [...p.parts, { name: "", cost: 0 }] }));
-  };
-
-  const removePartRow = (index: number) => {
-    setStatusForm((p) => ({ ...p, parts: p.parts.filter((_, i) => i !== index) }));
-  };
-
+  /*Comment : Row-management for the parts list - append a blank row, remove one by index, or edit one field of one row. */
+  const addPartRow = () => setParts((p) => [...p, { name: "", cost: 0 }]);
+  const removePartRow = (index: number) => setParts((p) => p.filter((_, i) => i !== index));
   const updatePartRow = (index: number, field: "name" | "cost", value: string) => {
-    setStatusForm((p) => ({
-      ...p,
-      parts: p.parts.map((row, i) =>
-        i === index ? { ...row, [field]: field === "cost" ? Number(value) : value } : row
-      ),
-    }));
+    setParts((p) => p.map((row, i) => (i === index ? { ...row, [field]: field === "cost" ? Number(value) : value } : row)));
   };
 
-  const handleUpdateStatus = async (e: React.FormEvent) => {
+  const handleUpdateAppt = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedAppointment) return;
+    if (!selectedAppt) return;
 
     setIsSubmitting(true);
     setActionError("");
     setActionSuccess("");
 
     try {
-      /*Comment : viewingCustomerRequest is passed through unedited - this is the actual bug fix. The mechanic's narrative + itemized parts rows get combined with it, never in place of it, so the customer's original words survive this save exactly as they were, no matter what the mechanic writes here. partsCost is still computed as the sum of the itemized rows. */
-      const combinedDescription = buildServiceDescription(viewingCustomerRequest, statusForm.serviceDescription, statusForm.parts);
-      const partsTotal = sumParts(statusForm.parts);
+      /*Comment : viewingCustomerRequest is passed through unedited - the actual bug fix. The mechanic's narrative + itemized parts rows get combined with it, never in place of it, so the customer's original words survive this save exactly as they were. partsCost is computed as the sum of the itemized rows, not typed in directly. */
+      const combinedDescription = buildServiceDescription(viewingCustomerRequest, narrative, parts);
+      const partsTotal = sumParts(parts);
 
-      await api.updateAppointmentStatus(selectedAppointment.appointmentId, {
-        status: statusForm.status,
+      await api.updateAppointmentStatus(selectedAppt.appointmentId, {
+        status: apptStatus,
         partsCost: partsTotal,
-        laborCost: Number(statusForm.laborCost),
+        laborCost: Number(laborCost),
         serviceDescription: combinedDescription,
       });
-
-      setActionSuccess(`Work order #${selectedAppointment.appointmentId} updated to ${statusForm.status}!`);
-      setSelectedAppointment(null);
+      setActionSuccess(`Work order #${selectedAppt.appointmentId} updated successfully.`);
+      setSelectedAppt(null);
       await loadData();
     } catch (err: unknown) {
       const error = err as ApiError;
-      setActionError(error.message || "Failed to update appointment.");
+      setActionError(error.message || "Failed to update work order.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleReviewReport = async (reportId: number) => {
+  const handleVerifySolution = async (reportId: number) => {
     setIsSubmitting(true);
     setActionError("");
     setActionSuccess("");
 
     try {
       await api.reviewProblemReport(reportId);
-      setActionSuccess(`Diagnostic case #${reportId} verified and signed off by ${user?.firstName}!`);
+      setActionSuccess(`AI diagnostic case #${reportId} verified and signed off.`);
       await loadData();
     } catch (err: unknown) {
       const error = err as ApiError;
-      setActionError(error.message || "Failed to sign off diagnostic report.");
+      setActionError(error.message || "Failed to verify diagnostic solution.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  /*Comment : The "automatic reply" action for a diagnosis that has no appointment yet - sends a real Reminder to the customer's vehicle asking them to book, instead of the earlier chat-based approach which hit a hard wall (chat needs an appointment that doesn't exist for a fresh diagnosis). */
+  /*Comment : The "automatic reply" action for a diagnosis that has no appointment yet - sends a real Reminder to the customer's vehicle asking them to book, instead of an earlier chat-based approach which hit a hard wall (chat needs an appointment that doesn't exist for a fresh diagnosis). */
   const handleRequestAppointment = async (reportId: number) => {
     setIsSubmitting(true);
     setActionError("");
@@ -180,174 +165,137 @@ export function MechanicDashboard() {
     }
   };
 
-  /*Comment : Renders one work-order card - shared across all three Not Completed / Pending / Complete groups below. Same red "!" badge convention as CustomerDashboard's Messages button. "Complete" reads invoiceStatus passively (it's just PENDING vs PAID data already on the appointment) - there's deliberately no action here to change it. Marking an invoice paid belongs to hero feature 8 (payment status of invoices sent to customer), which is a separate piece of work. */
-  const renderAppointmentCard = (a: Appointment) => {
+  if (isLoading) {
+    return (
+      <div className="w-full flex flex-col items-center justify-center py-20 gap-3">
+        <Loader2 className="w-6 h-6 animate-spin text-[#635bff]" />
+        <span className="text-sm text-gray-500 font-semibold">Opening technician station...</span>
+      </div>
+    );
+  }
+
+  const assignedAppointments = appointments.filter((a) => a.mechanicId === user?.userId);
+  const activeJobs = assignedAppointments.filter((a) => a.status === "SCHEDULED" || a.status === "IN_PROGRESS");
+  const completedJobs = assignedAppointments.filter((a) => a.status === "COMPLETED");
+
+  /*Comment : Renders one work-order card - shared across all three Not Completed / Pending / Complete groups below. Red "!" badge on the Messages button when there's an unread message waiting. "Pending"/"Complete" read invoiceStatus passively - marking an invoice paid belongs to hero feature 8 (payment status of invoices sent to customer), a separate piece of work owned by the team, so there's deliberately no action here to change it. */
+  const renderWorkOrderCard = (a: Appointment) => {
     const isNew = hasNewMessage(findActivity(latestActivity, a.appointmentId), user?.userId);
+    const { customerRequest, narrative: mechNarrative, parts: mechParts } = parseServiceDescription(a.serviceDescription);
 
     return (
       <div
         key={a.appointmentId}
-        className="p-5 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-4 shadow-lg"
+        className="p-6 bg-white rounded-xl shadow-[0_2px_4px_rgba(0,0,0,0.04),0_8px_16px_rgba(0,0,0,0.08)] border border-gray-100 hover:-translate-y-1 hover:shadow-[0_12px_30px_rgba(0,0,0,0.08)] transition-all duration-[400ms] ease-out space-y-4"
       >
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
-          <div className="space-y-0.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
+          <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-zinc-500 font-mono">Work Order #{a.appointmentId}</span>
+              <span className="text-xs font-mono text-gray-400">Order #{a.appointmentId}</span>
               <span
-                className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
+                className={`text-[10px] px-3 py-0.5 rounded-full font-bold border ${
                   a.status === "COMPLETED"
-                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                     : a.status === "IN_PROGRESS"
-                    ? "bg-sky-500/10 text-sky-400 border-sky-500/20"
-                    : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                    ? "bg-blue-50 text-[#635bff] border-blue-200"
+                    : "bg-amber-50 text-amber-700 border-amber-200"
                 }`}
               >
                 {a.status}
               </span>
             </div>
-            <h3 className="text-base font-bold text-zinc-100">{a.vehicleInfo}</h3>
+            <h3 className="text-base font-bold text-[#0a2540]">{a.vehicleInfo}</h3>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 self-start sm:self-auto">
             {/*Comment : Same badge convention as the customer's side - a red "!" when the latest message is from the other participant and hasn't been marked seen on this browser yet. */}
             <button
               onClick={() => setChatAppointment(a)}
-              className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sky-300 border border-zinc-700 text-xs font-semibold transition-colors"
+              className="relative px-4 py-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 text-[#0a2540] font-semibold text-xs shadow-sm hover:-translate-y-0.5 transition-all duration-[300ms] ease-out flex items-center gap-1.5"
             >
-              <MessageCircle className="w-3.5 h-3.5" />
+              <MessageCircle className="w-4 h-4 text-[#635bff]" />
               <span>Messages</span>
               {isNew && (
-                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center border-2 border-zinc-900">
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center border-2 border-white">
                   !
                 </span>
               )}
             </button>
-            {a.status !== "COMPLETED" && (
-              <button
-                onClick={() => handleOpenUpdateModal(a)}
-                className="px-3.5 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-zinc-950 font-bold text-xs shadow-sm transition-all"
-              >
-                {a.status === "SCHEDULED" ? "Start Repair" : "Update Costs & Complete"}
-              </button>
-            )}
+            <button
+              onClick={() => handleOpenApptModal(a)}
+              className="px-4 py-2 rounded-lg bg-[#635bff] hover:bg-[#5349e0] text-white font-semibold text-xs shadow-[0_2px_4px_rgba(99,91,255,0.2)] hover:-translate-y-0.5 transition-all duration-[300ms] ease-out flex items-center gap-1.5"
+            >
+              <FileCheck className="w-4 h-4" />
+              <span>Update Work Order</span>
+            </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          <div className="p-3 bg-zinc-950/60 rounded-xl border border-zinc-800/60">
-            <span className="text-zinc-500 font-medium block">Customer Owner</span>
-            <span className="text-zinc-200 font-semibold mt-0.5 block">{a.ownerName}</span>
-          </div>
-          <div className="p-3 bg-zinc-950/60 rounded-xl border border-zinc-800/60">
-            <span className="text-zinc-500 font-medium block">Scheduled Window</span>
-            <span className="text-zinc-200 font-semibold mt-0.5 block">
-              {new Date(a.scheduledStart).toLocaleString()} ({a.durationMinutes} min)
-            </span>
-          </div>
-          <div className="p-3 bg-zinc-950/60 rounded-xl border border-zinc-800/60">
-            <span className="text-zinc-500 font-medium block">Logged Costs</span>
-            <span className="text-emerald-400 font-mono font-bold mt-0.5 block">
-              Parts: ${a.partsCost.toFixed(2)} | Labor: ${a.laborCost.toFixed(2)}
-            </span>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600">
+          <div>Customer: <strong className="text-[#0a2540]">{a.ownerName}</strong></div>
+          <div>Scheduled: <strong className="text-[#0a2540] font-mono">{new Date(a.scheduledStart).toLocaleString()}</strong></div>
+          <div>Duration: <strong className="text-[#0a2540]">{a.durationMinutes} min</strong></div>
+          <div>Invoiced: <strong className="text-emerald-600 font-mono">${a.totalAmount.toFixed(2)}</strong></div>
         </div>
 
-        {a.serviceDescription && (() => {
-          const { customerRequest, narrative, parts } = parseServiceDescription(a.serviceDescription);
-          return (
-            <div className="text-xs text-zinc-300 space-y-2">
-              {customerRequest && (
-                <div>
-                  <span className="text-zinc-500 font-semibold block mb-1">Customer&apos;s Request:</span>
-                  <p className="p-3 bg-sky-950/20 rounded-xl border border-sky-500/30 text-zinc-200">
-                    {customerRequest}
-                  </p>
-                </div>
-              )}
-              {narrative && (
-                <div>
-                  <span className="text-zinc-500 font-semibold block mb-1">Service Task Notes:</span>
-                  <p className="p-3 bg-zinc-950/60 rounded-xl border border-zinc-800/60 text-zinc-200">
-                    {narrative}
-                  </p>
-                </div>
-              )}
-              {parts.length > 0 && (
-                <div>
-                  <span className="text-zinc-500 font-semibold block mb-1">Parts Replaced:</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {parts.map((p, i) => (
-                      <span
-                        key={i}
-                        className="text-[11px] px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-300"
-                      >
-                        {p.name} <span className="text-emerald-400 font-mono">${p.cost.toFixed(2)}</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
+        {/*Comment : Customer's request and the mechanic's own write-up are two genuinely different pieces of text (see serviceLog.ts) - shown as two separately labeled sections so they're never mixed together the way the original bug used to mix them. */}
+        {customerRequest && (
+          <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-lg text-xs text-gray-700">
+            <span className="font-bold text-[#635bff] uppercase tracking-wider block text-[10px]">Customer&apos;s Request</span>
+            <p className="mt-1 text-[#0a2540]">{customerRequest}</p>
+          </div>
+        )}
+        {mechNarrative && (
+          <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-700">
+            <span className="font-bold text-gray-400 uppercase tracking-wider block text-[10px]">Service Notes</span>
+            <p className="mt-1 text-[#0a2540]">{mechNarrative}</p>
+          </div>
+        )}
+        {mechParts.length > 0 && (
+          <div>
+            <span className="font-bold text-gray-400 uppercase tracking-wider block text-[10px] mb-1.5">Parts Replaced</span>
+            <div className="flex flex-wrap gap-1.5">
+              {mechParts.map((p, i) => (
+                <span key={i} className="text-[11px] px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-200 text-gray-700">
+                  {p.name} <span className="text-emerald-600 font-mono font-bold">${p.cost.toFixed(2)}</span>
+                </span>
+              ))}
             </div>
-          );
-        })()}
-
-        {a.status === "COMPLETED" && (
-          <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2 text-emerald-400 font-semibold">
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Work Completed & Invoice Stamped in DB</span>
-            </div>
-            <span className="font-mono font-bold text-emerald-300 text-sm">
-              Total: ${a.totalAmount.toFixed(2)} ({a.invoiceStatus})
-            </span>
           </div>
         )}
       </div>
     );
   };
 
-  if (isLoading) {
-    return (
-      <div className="w-full flex flex-col items-center justify-center py-20 gap-3">
-        <Loader2 className="w-8 h-8 animate-spin text-sky-400" />
-        <span className="text-sm text-zinc-400">Loading technician work orders...</span>
-      </div>
-    );
-  }
-
   return (
-    <div className="w-full max-w-6xl space-y-6">
+    <div className="w-full max-w-6xl space-y-6 text-[#0a2540]">
       {/* Top Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl bg-zinc-900/70 border border-zinc-800 shadow-xl backdrop-blur-sm">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              Technician Workspace
-            </span>
-            <span className="text-xs text-zinc-500 font-mono">
-              Badge: {user?.employeeCode || `ID #${user?.userId}`} • Shop: {user?.workshopName}
-            </span>
+      <div className="p-6 sm:p-8 bg-white rounded-xl shadow-[0_2px_4px_rgba(0,0,0,0.04),0_8px_16px_rgba(0,0,0,0.08)] border border-gray-100 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#635bff]/10 text-[#635bff] border border-[#635bff]/20">
+                Technician Station
+              </span>
+              <span className="text-xs text-gray-400 font-mono">Employee #{user?.userId}</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#0a2540]">
+              {user?.firstName} {user?.lastName}
+            </h1>
+            <p className="text-xs sm:text-sm text-gray-500">
+              Assigned to <strong className="text-[#0a2540]">{user?.workshopName}</strong> service bays.
+            </p>
           </div>
-          <h1 className="text-2xl font-extrabold text-zinc-100">
-            Welcome, Tech {user?.firstName} {user?.lastName}
-          </h1>
-          <p className="text-xs text-zinc-400">
-            Manage your assigned vehicle work orders, log billable parts and labor, and sign off AI diagnostic cases.
-          </p>
-        </div>
 
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-zinc-950/80 rounded-xl border border-zinc-800 text-center">
-            <span className="text-[10px] text-zinc-500 font-semibold uppercase block">Active Jobs</span>
-            <span className="text-lg font-bold text-sky-400 font-mono">
-              {appointments.filter((a) => a.status !== "COMPLETED" && a.status !== "CANCELLED").length}
-            </span>
-          </div>
-          <div className="p-3 bg-zinc-950/80 rounded-xl border border-zinc-800 text-center">
-            <span className="text-[10px] text-zinc-500 font-semibold uppercase block">Completed</span>
-            <span className="text-lg font-bold text-emerald-400 font-mono">
-              {appointments.filter((a) => a.status === "COMPLETED").length}
-            </span>
+          <div className="flex items-center gap-3">
+            <div className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs">
+              <span className="text-gray-400 block text-[10px] uppercase font-bold tracking-wider">In Queue</span>
+              <span className="text-lg font-bold text-[#635bff] font-mono">{activeJobs.length}</span>
+            </div>
+            <div className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs">
+              <span className="text-gray-400 block text-[10px] uppercase font-bold tracking-wider">Completed</span>
+              <span className="text-lg font-bold text-emerald-600 font-mono">{completedJobs.length}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -355,258 +303,182 @@ export function MechanicDashboard() {
       {actionSuccess && <AlertMessage type="success" message={actionSuccess} />}
       {actionError && <AlertMessage type="error" message={actionError} />}
 
-      {/* Tabs */}
-      <div className="flex border-b border-zinc-800 gap-2">
-        <button
-          onClick={() => setActiveTab("queue")}
-          className={`pb-3 px-4 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === "queue"
-              ? "border-sky-500 text-sky-400"
-              : "border-transparent text-zinc-400 hover:text-zinc-200"
-          }`}
-        >
-          <Wrench className="w-4 h-4" />
-          <span>Assigned Service Queue ({appointments.length})</span>
-        </button>
-        <button
-          onClick={() => setActiveTab("diagnostics")}
-          className={`pb-3 px-4 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === "diagnostics"
-              ? "border-sky-500 text-sky-400"
-              : "border-transparent text-zinc-400 hover:text-zinc-200"
-          }`}
-        >
-          <BrainCircuit className="w-4 h-4" />
-          <span>Shop Diagnostic Cases ({reports.length})</span>
-        </button>
-      </div>
+      {/* Main Grid: Work Orders + Diagnostic Reviews */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-1">
+        {/* Left 2 Cols: Assigned Service Work Orders, grouped Not Completed / Pending / Complete */}
+        <div className="lg:col-span-2 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Wrench className="w-4 h-4 text-[#635bff]" />
+              <h2 className="text-base font-bold text-[#0a2540]">Assigned Service Work Orders</h2>
+            </div>
+            <span className="text-xs text-gray-400 font-mono font-semibold">Total ({assignedAppointments.length})</span>
+          </div>
 
-      {/* Tab 1: Service Queue */}
-      {activeTab === "queue" && (
-        <div className="space-y-4">
-          {appointments.length === 0 ? (
-            <div className="p-12 text-center rounded-2xl bg-zinc-900/40 border border-dashed border-zinc-800 space-y-3">
-              <div className="w-12 h-12 rounded-full bg-sky-500/10 text-sky-400 flex items-center justify-center mx-auto">
-                <Wrench className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-bold text-zinc-200">No Jobs Assigned</h3>
-              <p className="text-xs text-zinc-500 max-w-sm mx-auto">
-                Your assigned work queue is currently clear. New customer bookings will appear here in real time.
-              </p>
+          {assignedAppointments.length === 0 ? (
+            <div className="p-12 text-center bg-white rounded-xl shadow-sm border border-gray-200 text-xs text-gray-500">
+              No appointments currently assigned to your queue.
             </div>
           ) : (
             /*Comment : Same 3-category grouping as the customer's side, using the identical shared helper - Not Completed (still needs work), Pending (done, unpaid), Complete (done, paid) - so both dashboards agree on what each bucket means. */
             (() => {
-              const { notCompleted, pending, complete } = groupAppointments(appointments, latestActivity, user?.userId);
+              const { notCompleted, pending, complete } = groupAppointments(assignedAppointments, latestActivity, user?.userId);
               return (
                 <div className="space-y-4">
-                  <CollapsibleGroup
-                    title="Not Completed"
-                    count={notCompleted.length}
-                    accentClass="bg-amber-500/10 text-amber-400 border-amber-500/20"
-                  >
-                    {notCompleted.map(renderAppointmentCard)}
+                  <CollapsibleGroup title="Not Completed" count={notCompleted.length} accentClass="bg-amber-50 text-amber-700 border-amber-200">
+                    {notCompleted.map(renderWorkOrderCard)}
                   </CollapsibleGroup>
-
-                  <CollapsibleGroup
-                    title="Pending Payment"
-                    count={pending.length}
-                    accentClass="bg-sky-500/10 text-sky-400 border-sky-500/20"
-                  >
-                    {pending.map(renderAppointmentCard)}
+                  <CollapsibleGroup title="Pending Payment" count={pending.length} accentClass="bg-blue-50 text-[#635bff] border-blue-200">
+                    {pending.map(renderWorkOrderCard)}
                   </CollapsibleGroup>
-
-                  <CollapsibleGroup
-                    title="Complete"
-                    count={complete.length}
-                    accentClass="bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                  >
-                    {complete.map(renderAppointmentCard)}
+                  <CollapsibleGroup title="Complete" count={complete.length} accentClass="bg-emerald-50 text-emerald-700 border-emerald-200">
+                    {complete.map(renderWorkOrderCard)}
                   </CollapsibleGroup>
                 </div>
               );
             })()
           )}
         </div>
-      )}
 
-      {/* Tab 2: Diagnostic Cases */}
-      {activeTab === "diagnostics" && (
+        {/* Right Col: AI Diagnostics Verification Queue */}
         <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <BrainCircuit className="w-4 h-4 text-[#00a8cc]" />
+            <h2 className="text-base font-bold text-[#0a2540]">Diagnostic Verifications</h2>
+          </div>
+
           {reports.length === 0 ? (
-            <div className="p-12 text-center rounded-2xl bg-zinc-900/40 border border-dashed border-zinc-800 space-y-3">
-              <div className="w-12 h-12 rounded-full bg-sky-500/10 text-sky-400 flex items-center justify-center mx-auto">
-                <BrainCircuit className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-bold text-zinc-200">No Open Diagnostic Cases</h3>
-              <p className="text-xs text-zinc-500 max-w-sm mx-auto">
-                All customer problem reports in your workshop have been resolved.
-              </p>
+            <div className="p-8 text-center bg-white rounded-xl shadow-sm border border-gray-200 text-xs text-gray-500">
+              No problem reports currently filed.
             </div>
           ) : (
             <div className="space-y-4">
               {reports.map((r) => (
                 <div
                   key={r.reportId}
-                  className="p-5 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-4 shadow-lg"
+                  className="p-5 bg-white rounded-xl shadow-[0_2px_4px_rgba(0,0,0,0.04),0_8px_16px_rgba(0,0,0,0.08)] border border-gray-100 space-y-3 text-xs"
                 >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
-                    <div className="space-y-0.5">
-                      <span className="text-xs text-zinc-500 font-mono">Case #{r.reportId}</span>
-                      <h4 className="text-sm font-bold text-zinc-200">
-                        {r.vehicleInfo} — Owned by {r.customerName}
-                      </h4>
+                  <div className="flex items-center justify-between pb-1 border-b border-gray-100">
+                    <span className="font-bold text-[#0a2540] text-sm">{r.vehicleInfo}</span>
+                    <span className="text-gray-400 font-mono text-[10px]">#{r.reportId}</span>
+                  </div>
+
+                  <p className="text-gray-600 line-clamp-2 leading-relaxed">{r.description}</p>
+
+                  {r.solution && (
+                    <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-lg space-y-1">
+                      <div className="flex items-center justify-between text-[#635bff] font-bold text-[11px]">
+                        <span>AI Hypothesis</span>
+                        <span>{Math.round(r.solution.confidenceScore * 100)}% Match</span>
+                      </div>
+                      <p className="text-[#0a2540] font-semibold text-[11px]">{r.solution.probableCause}</p>
                     </div>
+                  )}
+
+                  <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100">
+                    <span
+                      className={`text-[10px] px-2.5 py-0.5 rounded-full border font-bold ${
+                        r.status === "RESOLVED"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : "bg-amber-50 text-amber-700 border-amber-200"
+                      }`}
+                    >
+                      {r.status}
+                    </span>
 
                     <div className="flex items-center gap-2">
-                      <span
-                        className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
-                          r.status === "RESOLVED"
-                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                            : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                        }`}
-                      >
-                        {r.status}
-                      </span>
-                      {/*Comment : Two options per case, gated on resolved status - not chat (that idea's been dropped; it needed an appointment that a fresh diagnosis doesn't have yet). Request Appointment only shows while the case is still OPEN - once resolved there's nothing left to ask the customer to book. */}
+                      {/*Comment : Two options per case, gated on resolved status - not chat (chat needs an appointment that a fresh diagnosis doesn't have yet). Request Appointment only shows while the case is still OPEN - once resolved there's nothing left to ask the customer to book. */}
                       {r.status === "OPEN" && (
                         <button
                           onClick={() => handleRequestAppointment(r.reportId)}
                           disabled={isSubmitting}
-                          className="px-3 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sky-300 border border-zinc-700 font-semibold text-xs flex items-center gap-1.5 disabled:opacity-50"
+                          className="px-3 py-1 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 text-[#0a2540] font-bold text-xs flex items-center gap-1 transition-all duration-[300ms] ease-out hover:-translate-y-0.5 disabled:opacity-50"
                         >
-                          <Bell className="w-3.5 h-3.5" />
+                          <Bell className="w-3.5 h-3.5 text-[#635bff]" />
                           <span>Request Appointment</span>
                         </button>
                       )}
                       {r.solution && !r.solution.reviewedBy && (
                         <button
-                          onClick={() => handleReviewReport(r.reportId)}
+                          onClick={() => handleVerifySolution(r.reportId)}
                           disabled={isSubmitting}
-                          className="px-3 py-1 rounded-lg bg-sky-500 hover:bg-sky-400 text-zinc-950 font-bold text-xs flex items-center gap-1.5"
+                          className="px-3 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 font-bold text-xs flex items-center gap-1 transition-all duration-[300ms] ease-out hover:-translate-y-0.5"
                         >
-                          <UserCheck className="w-3.5 h-3.5" />
-                          <span>Verify & Sign Off</span>
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Sign Off</span>
                         </button>
                       )}
                     </div>
                   </div>
-
-                  {/* Description */}
-                  <div className="text-xs text-zinc-300">
-                    <span className="font-semibold text-zinc-500 block mb-1">Reported Issue:</span>
-                    <p className="p-3 bg-zinc-950/60 rounded-xl border border-zinc-800/60 text-zinc-200">
-                      {r.description}
-                    </p>
-                  </div>
-
-                  {/* AI Solution Box */}
-                  {r.solution && (
-                    <div className="p-4 rounded-xl bg-sky-950/20 border border-sky-500/30 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-sky-400 text-xs font-bold">
-                          <BrainCircuit className="w-4 h-4" />
-                          <span>AI Synthesis (Confidence: {Math.round(r.solution.confidenceScore * 100)}%)</span>
-                        </div>
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded font-semibold border ${
-                            r.solution.urgency === "HIGH"
-                              ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
-                              : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                          }`}
-                        >
-                          Urgency: {r.solution.urgency}
-                        </span>
-                      </div>
-
-                      <div className="space-y-2 text-xs">
-                        <div>
-                          <span className="font-semibold text-zinc-400 block">Probable Cause:</span>
-                          <p className="text-zinc-200 mt-0.5">{r.solution.probableCause}</p>
-                        </div>
-                        <div>
-                          <span className="font-semibold text-zinc-400 block">Recommended Action:</span>
-                          <p className="text-zinc-200 mt-0.5">{r.solution.recommendedAction}</p>
-                        </div>
-                      </div>
-
-                      {r.solution.reviewerName && (
-                        <div className="pt-2 border-t border-sky-500/20 flex items-center gap-1.5 text-[11px] text-emerald-400">
-                          <UserCheck className="w-3.5 h-3.5" />
-                          <span>Technician Sign-Off: {r.solution.reviewerName}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
           )}
         </div>
-      )}
+      </div>
 
-      {/* UPDATE MODAL */}
-      {selectedAppointment && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <div className="flex items-center gap-2 text-zinc-100 font-bold text-base">
-                <Wrench className="w-5 h-5 text-sky-400" />
-                <span>Update Work Order #{selectedAppointment.appointmentId}</span>
+      {/* UPDATE WORK ORDER MODAL */}
+      {selectedAppt && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-2xl p-6 sm:p-8 space-y-5 border border-gray-100 text-[#0a2540]">
+            <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+              <div className="flex items-center gap-2 font-bold text-base">
+                <Wrench className="w-5 h-5 text-[#635bff]" />
+                <span>Update Work Order #{selectedAppt.appointmentId}</span>
               </div>
               <button
-                onClick={() => setSelectedAppointment(null)}
-                className="text-zinc-500 hover:text-zinc-300 text-sm font-bold"
+                onClick={() => setSelectedAppt(null)}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleUpdateStatus} className="space-y-3">
-              {/*Comment : Read-only - shown for context so the mechanic can see what was actually asked for, but there's no input here for it. It gets carried forward automatically on save (see handleUpdateStatus); editing the customer's own words isn't something this form offers. */}
+            <form onSubmit={handleUpdateAppt} className="space-y-4">
+              {/*Comment : Read-only - shown for context so the mechanic can see what was actually asked for. Carried forward automatically on save; editing the customer's own words isn't something this form offers. */}
               {viewingCustomerRequest && (
-                <div className="p-3 rounded-xl bg-sky-950/20 border border-sky-500/30 space-y-1">
-                  <span className="text-[11px] font-bold text-sky-400 block">Customer&apos;s Original Request</span>
-                  <p className="text-xs text-zinc-300 whitespace-pre-wrap">{viewingCustomerRequest}</p>
+                <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-200 space-y-1">
+                  <span className="text-[11px] font-bold text-[#635bff] block">Customer&apos;s Original Request</span>
+                  <p className="text-xs text-[#0a2540] whitespace-pre-wrap">{viewingCustomerRequest}</p>
                 </div>
               )}
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-300 block">Work Status</label>
+                <label className="text-xs font-semibold text-[#0a2540] block">Job Status</label>
                 <select
-                  value={statusForm.status}
-                  onChange={(e) => setStatusForm((p) => ({ ...p, status: e.target.value as any }))}
-                  className="w-full py-2 px-3 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-100 text-xs focus:outline-none focus:border-sky-500"
+                  value={apptStatus}
+                  onChange={(e) => setApptStatus(e.target.value as any)}
+                  className="w-full p-2.5 rounded-lg bg-white border border-gray-300 text-xs text-[#0a2540] focus:outline-none focus:ring-2 focus:ring-[#635bff] shadow-sm font-medium"
                 >
-                  <option value="IN_PROGRESS">IN_PROGRESS (Currently Servicing)</option>
-                  <option value="COMPLETED">COMPLETED (Finished & Generate Invoice)</option>
+                  <option value="SCHEDULED">SCHEDULED (Awaiting Bay)</option>
+                  <option value="IN_PROGRESS">IN_PROGRESS (Currently on Hoist)</option>
+                  <option value="COMPLETED">COMPLETED (Repairs Finished)</option>
                   <option value="CANCELLED">CANCELLED</option>
                 </select>
               </div>
 
-              {/*Comment : Parts Replaced - the itemized bill builder. Each row is one line item (part name + its cost); "Add Part" appends a blank row the same way adding a poll option would. Parts Total below is computed live from these rows, not typed in separately. */}
+              {/*Comment : Parts Replaced - the itemized bill builder. Each row is one line item (part name + its cost); "Add Part" appends a blank row the same way adding a poll option would. Parts Total is computed live from these rows, not typed in separately. */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-zinc-300 block">Parts Replaced</label>
+                  <label className="text-xs font-semibold text-[#0a2540] block">Parts Replaced</label>
                   <button
                     type="button"
                     onClick={addPartRow}
-                    className="flex items-center gap-1 text-[11px] font-semibold text-sky-400 hover:text-sky-300"
+                    className="flex items-center gap-1 text-[11px] font-bold text-[#635bff] hover:text-[#5349e0]"
                   >
                     <Plus className="w-3 h-3" />
                     <span>Add Part</span>
                   </button>
                 </div>
-
                 <div className="space-y-2">
-                  {statusForm.parts.map((row, index) => (
+                  {parts.map((row, index) => (
                     <div key={index} className="flex items-center gap-2">
                       <input
                         type="text"
                         placeholder="Part name"
                         value={row.name}
                         onChange={(e) => updatePartRow(index, "name", e.target.value)}
-                        className="flex-1 py-2 px-3 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-100 text-xs focus:outline-none focus:border-sky-500"
+                        className="flex-1 p-2 rounded-lg bg-white border border-gray-300 text-xs text-[#0a2540] focus:outline-none focus:ring-2 focus:ring-[#635bff] shadow-sm"
                       />
                       <input
                         type="number"
@@ -614,70 +486,65 @@ export function MechanicDashboard() {
                         placeholder="Cost"
                         value={row.cost || ""}
                         onChange={(e) => updatePartRow(index, "cost", e.target.value)}
-                        className="w-24 py-2 px-3 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-100 text-xs focus:outline-none focus:border-sky-500"
+                        className="w-24 p-2 rounded-lg bg-white border border-gray-300 text-xs text-[#0a2540] focus:outline-none focus:ring-2 focus:ring-[#635bff] shadow-sm"
                       />
-                      {statusForm.parts.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removePartRow(index)}
-                          className="text-zinc-500 hover:text-rose-400 text-xs font-bold px-1"
-                        >
+                      {parts.length > 1 && (
+                        <button type="button" onClick={() => removePartRow(index)} className="text-gray-400 hover:text-red-500 text-xs font-bold px-1">
                           ✕
                         </button>
                       )}
                     </div>
                   ))}
                 </div>
-
-                <div className="flex justify-between text-[11px] text-zinc-400 pt-1">
+                <div className="flex justify-between text-[11px] text-gray-500 pt-1">
                   <span>Parts Total</span>
-                  <span className="font-mono font-semibold text-zinc-200">${sumParts(statusForm.parts).toFixed(2)}</span>
+                  <span className="font-mono font-bold text-[#0a2540]">${sumParts(parts).toFixed(2)}</span>
                 </div>
               </div>
 
               <FormInput
                 label="Labor Cost ($)"
                 name="laborCost"
-                id="up-labor"
+                id="upd-labor"
                 type="number"
                 step="0.01"
-                value={statusForm.laborCost.toString()}
-                onChange={(e) => setStatusForm((p) => ({ ...p, laborCost: Number(e.target.value) }))}
-                icon={<DollarSign className="w-4 h-4" />}
+                required
+                value={laborCost.toString()}
+                onChange={(e) => setLaborCost(Number(e.target.value))}
               />
 
               <FormInput
                 label="Completed Work Description"
-                name="serviceDescription"
-                id="up-desc"
+                name="narrative"
+                id="upd-desc"
                 placeholder="e.g. Tested brake pressure and confirmed no further fluid leakage"
-                value={statusForm.serviceDescription}
-                onChange={(e) => setStatusForm((p) => ({ ...p, serviceDescription: e.target.value }))}
+                value={narrative}
+                onChange={(e) => setNarrative(e.target.value)}
               />
 
-              {/*Comment : Grand total now sums the live Parts Total (from the rows above) with Labor Cost - matches exactly what gets sent to the backend as partsCost + laborCost. */}
-              <div className="p-3 bg-zinc-950/80 rounded-xl border border-zinc-800 flex justify-between text-xs">
-                <span className="text-zinc-400 font-medium">Calculated Invoice Total:</span>
-                <span className="font-mono font-extrabold text-emerald-400">
-                  ${(sumParts(statusForm.parts) + Number(statusForm.laborCost)).toFixed(2)}
+              {/* Dynamic Invoice Calculation */}
+              <div className="p-3.5 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-between text-xs">
+                <span className="text-gray-500 font-semibold">Computed Invoice Total:</span>
+                <span className="text-base font-bold text-emerald-600 font-mono">
+                  ${(sumParts(parts) + Number(laborCost || 0)).toFixed(2)}
                 </span>
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2">
+              <div className="pt-2 flex items-center justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => setSelectedAppointment(null)}
-                  className="px-3.5 py-2 rounded-lg text-xs font-semibold text-zinc-400 hover:text-zinc-200"
+                  onClick={() => setSelectedAppt(null)}
+                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-400 text-zinc-950 font-bold text-xs flex items-center gap-1.5"
+                  className="px-5 py-2.5 rounded-lg bg-[#635bff] hover:bg-[#5349e0] text-white font-semibold text-xs shadow-[0_2px_4px_rgba(99,91,255,0.2)] hover:-translate-y-0.5 transition-all duration-[300ms] ease-out flex items-center gap-1.5"
                 >
-                  {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                  <span>Save Updates</span>
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  <span>Save Work Order</span>
                 </button>
               </div>
             </form>
