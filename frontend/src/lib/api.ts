@@ -169,6 +169,24 @@ export interface Appointment {
   createdAt: string;
 }
 
+/*Comment : One row from the CONVERSATION table (Hero Feature 7), already joined with the sender's name/role on the backend so the chat UI never has to look that up separately. */
+export interface Message {
+  conversationId: number;
+  appointmentId: number;
+  senderId: number;
+  senderName: string;
+  senderRole: "ADMIN" | "CUSTOMER" | "MECHANIC";
+  content: string;
+  sentAt: string;
+}
+
+/*Comment : One row per appointment that has at least one message - just enough to know "did something new happen here since I last looked", without fetching every thread in full. */
+export interface LatestActivity {
+  appointmentId: number;
+  lastMessageAt: string;
+  lastSenderId: number;
+}
+
 export interface Reminder {
   reminderId: number;
   vehicleId: number;
@@ -346,6 +364,13 @@ class ApiClient {
     });
   }
 
+  /*Comment : The mechanic's "automatic reply" for a diagnosis with no appointment yet - creates a real Reminder on the customer's vehicle rather than requiring a chat thread that can't exist without an appointment. */
+  async requestAppointment(reportId: number): Promise<ProblemReport> {
+    return this.request<ProblemReport>(`/api/problem-reports/${reportId}/request-appointment`, {
+      method: "POST",
+    });
+  }
+
   // Appointments
   async getAppointments(): Promise<Appointment[]> {
     return this.request<Appointment[]>("/api/appointments", {
@@ -364,6 +389,28 @@ class ApiClient {
     return this.request<Appointment>(`/api/appointments/${id}/status`, {
       method: "PATCH",
       body: JSON.stringify(payload),
+    });
+  }
+
+  /*Comment : Hero Feature 7 - fetches one appointment's message thread. This is also what the chat modal's background poll calls repeatedly while it's open. */
+  async getMessages(appointmentId: number): Promise<Message[]> {
+    return this.request<Message[]>(`/api/appointments/${appointmentId}/messages`, {
+      method: "GET",
+    });
+  }
+
+  /*Comment : Hero Feature 7 - posts one new message onto an appointment's thread. */
+  async sendMessage(appointmentId: number, content: string): Promise<Message> {
+    return this.request<Message>(`/api/appointments/${appointmentId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    });
+  }
+
+  /*Comment : One call covering every appointment the caller is party to - powers the "new message" badges and the sort-to-top ordering, without fetching each thread individually. */
+  async getLatestMessageActivity(): Promise<LatestActivity[]> {
+    return this.request<LatestActivity[]>("/api/appointments/messages/latest", {
+      method: "GET",
     });
   }
 

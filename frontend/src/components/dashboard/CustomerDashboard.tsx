@@ -9,10 +9,17 @@ import {
   Appointment,
   Reminder,
   UserProfile,
+  LatestActivity,
   ApiError,
 } from "@/lib/api";
 import { FormInput } from "@/components/FormInput";
 import { AlertMessage } from "@/components/AlertMessage";
+import { AppointmentChatModal } from "@/components/AppointmentChatModal";
+import { AppointmentDetailModal } from "@/components/AppointmentDetailModal";
+import { CollapsibleGroup } from "@/components/CollapsibleGroup";
+import { groupAppointments } from "@/lib/appointmentGroups";
+import { hasNewMessage, findActivity } from "@/lib/unreadTracker";
+import { buildServiceDescription, parseServiceDescription } from "@/lib/serviceLog";
 import {
   Car,
   Plus,
@@ -28,6 +35,9 @@ import {
   FileText,
   UserCheck,
   Activity,
+  History,
+  MessageCircle,
+  ChevronDown,
 } from "lucide-react";
 
 /**
@@ -46,7 +56,7 @@ function computeVehicleHealth(
   let score = 100;
   const breakdown: string[] = [];
 
-  // 1. Open problem reports, weighted by urgency
+  /*Comment : Rule 1 — Open issues hurt the most, especially urgent ones. Every problem report still sitting OPEN for this vehicle drags the score down; something the AI flagged as HIGH urgency costs more points than a LOW one, because it's riskier to leave sitting there unresolved. */
   const openReports = reports.filter((r) => r.vehicleId === vehicleId && r.status === "OPEN");
   if (openReports.length > 0) {
     let penalty = 0;
@@ -63,7 +73,7 @@ function computeVehicleHealth(
     breakdown.push("+0 pts — no open problem reports");
   }
 
-  // 2. Active maintenance reminders
+  /*Comment : Rule 2 — Pending maintenance reminders count too, just less severely. These are routine, expected things (oil change due, inspection coming up) rather than active problems, so each one only costs a flat 5 points. */
   const activeReminders = reminders.filter((rem) => rem.vehicleId === vehicleId && rem.status === "ACTIVE");
   if (activeReminders.length > 0) {
     const penalty = activeReminders.length * 5;
@@ -73,7 +83,7 @@ function computeVehicleHealth(
     breakdown.push("+0 pts — no active reminders");
   }
 
-  // 3. Recency of last completed service
+  /*Comment : Rule 3 — How long it's been since the vehicle was actually serviced. A car with no service history yet, or one that hasn't seen a mechanic in a while, is more likely to be hiding problems — so the longer that gap gets, the more points come off. */
   const completedLogs = appointments
     .filter((a) => a.vehicleId === vehicleId && a.status === "COMPLETED")
     .sort((a, b) => new Date(b.scheduledStart).getTime() - new Date(a.scheduledStart).getTime());
@@ -94,6 +104,7 @@ function computeVehicleHealth(
     }
   }
 
+  /*Comment : Clamp the final tally to a sane 0–100 range, then translate the raw number into a plain-English label and a color so the customer gets an "at a glance" verdict instead of having to interpret a bare percentage. */
   score = Math.max(0, Math.min(100, Math.round(score)));
 
   let label: string, textClass: string, barClass: string, chipClass: string;
@@ -125,15 +136,23 @@ export function CustomerDashboard() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [mechanics, setMechanics] = useState<UserProfile[]>([]);
+  /*Comment : Latest-message info for every appointment this customer is party to - drives both the "!" badge on Messages buttons and the "new message sorts to top" ordering, everywhere appointments are listed. */
+  const [latestActivity, setLatestActivity] = useState<LatestActivity[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"garage" | "diagnostics" | "appointments">("garage");
+  /*Comment : "history" is Hero Feature 6 (Digital Service & Maintenance History) - its own tab, separate from "appointments" which mixes upcoming bookings with reminders. */
+  const [activeTab, setActiveTab] = useState<"garage" | "diagnostics" | "appointments" | "history">("garage");
 
   // Modals / Forms
   const [showAddVehicleModal, setShowAddVehicleModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showBookModal, setShowBookModal] = useState(false);
+  /*Comment : Which vehicle's Health Dashboard modal is open right now, if any. Storing the whole Vehicle object (not just its id) means the modal can render the vehicle's details instantly, with no extra lookup needed. */
   const [healthVehicle, setHealthVehicle] = useState<Vehicle | null>(null);
+  /*Comment : Which appointment's message thread is open right now, if any - Hero Feature 7. Same "store the object, not just the id" reasoning as healthVehicle above, so AppointmentChatModal has what it needs (appointmentId, vehicleInfo for its header) the instant it opens. */
+  const [chatAppointment, setChatAppointment] = useState<Appointment | null>(null);
+  /*Comment : Which Service History entry's "Expand" detail view is open right now, if any - the itemized parts bill + mechanic's notes + cost summary. */
+  const [detailAppointment, setDetailAppointment] = useState<Appointment | null>(null);
 
   // Form states
   const [vehicleForm, setVehicleForm] = useState({
@@ -164,18 +183,20 @@ export function CustomerDashboard() {
 
   const loadData = async () => {
     try {
-      const [vList, rList, aList, remList, mList] = await Promise.all([
+      const [vList, rList, aList, remList, mList, activityList] = await Promise.all([
         api.getVehicles(),
         api.getProblemReports(),
         api.getAppointments(),
         api.getReminders(),
         api.getWorkshopMechanics().catch(() => []),
+        api.getLatestMessageActivity().catch(() => []),
       ]);
       setVehicles(vList);
       setReports(rList);
       setAppointments(aList);
       setReminders(remList);
       setMechanics(mList);
+      setLatestActivity(activityList);
 
       if (vList.length > 0) {
         setReportForm((prev) => ({ ...prev, vehicleId: vList[0].vehicleId }));
@@ -256,13 +277,16 @@ export function CustomerDashboard() {
     setActionSuccess("");
 
     try {
+      /*Comment : Wraps the customer's own note in the same "Customer Request:" marker buildServiceDescription uses everywhere else, from the moment the appointment is created. That's what lets it survive later - when the mechanic saves their own write-up, they parse this back out and carry it forward untouched, instead of it just being raw text a second raw-text save can blindly overwrite. */
+      const initialDescription = buildServiceDescription(bookForm.serviceDescription, "", []);
+
       await api.createAppointment({
         vehicleId: Number(bookForm.vehicleId),
         mechanicId: Number(bookForm.mechanicId),
         reportId: bookForm.reportId ? Number(bookForm.reportId) : undefined,
         scheduledStart: bookForm.scheduledStart,
         durationMinutes: Number(bookForm.durationMinutes),
-        serviceDescription: bookForm.serviceDescription,
+        serviceDescription: initialDescription,
       });
       setActionSuccess("Service appointment booked conflict-free in the database!");
       setShowBookModal(false);
@@ -274,6 +298,73 @@ export function CustomerDashboard() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  /*Comment : Renders one appointment card - shared across all three Not Completed / Pending / Complete groups below, so they stay visually identical instead of three near-duplicate blocks drifting apart over time. Shows a red "!" badge on the Messages button when there's an unread message waiting. */
+  const renderAppointmentCard = (a: Appointment) => {
+    const isNew = hasNewMessage(findActivity(latestActivity, a.appointmentId), user?.userId);
+    /*Comment : Only the customer's own note belongs on this quick-glance card - the mechanic's write-up is a separate concern that lives in the Service History "Expand" detail view instead, so this list never shows the customer text mixed in with (or worse, replaced by) the mechanic's. */
+    const { customerRequest } = parseServiceDescription(a.serviceDescription);
+
+    return (
+      <div
+        key={a.appointmentId}
+        className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+      >
+        <div className="space-y-1 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-zinc-100 text-sm">{a.vehicleInfo}</span>
+            <span
+              className={`text-[10px] px-2 py-0.5 rounded font-semibold border ${
+                a.status === "COMPLETED"
+                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                  : a.status === "IN_PROGRESS"
+                  ? "bg-sky-500/10 text-sky-400 border-sky-500/20"
+                  : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+              }`}
+            >
+              {a.status}
+            </span>
+          </div>
+          <div className="text-zinc-400 flex flex-wrap gap-x-4 gap-y-1">
+            <span>Technician: <strong className="text-zinc-200">{a.mechanicName}</strong></span>
+            <span>Date: <strong className="text-zinc-200">{new Date(a.scheduledStart).toLocaleString()}</strong></span>
+            <span>Duration: <strong className="text-zinc-200">{a.durationMinutes} min</strong></span>
+          </div>
+          {customerRequest && (
+            <p className="text-zinc-400 text-[11px] mt-1">
+              <span className="text-zinc-500 font-semibold">Your Request: </span>
+              {customerRequest}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-col items-end gap-2">
+          {/*Comment : Opens this appointment's message thread - Hero Feature 7. The red "!" badge appears only when the latest message is from the other participant and hasn't been marked seen yet on this browser. */}
+          <button
+            onClick={() => setChatAppointment(a)}
+            className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sky-300 border border-zinc-700 text-xs font-semibold transition-colors"
+          >
+            <MessageCircle className="w-3.5 h-3.5" />
+            <span>Messages</span>
+            {isNew && (
+              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center border-2 border-zinc-900">
+                !
+              </span>
+            )}
+          </button>
+          {a.status === "COMPLETED" && (
+            <div className="p-3 bg-zinc-950/80 rounded-xl border border-zinc-800 text-right space-y-0.5">
+              <span className="text-[10px] text-zinc-500 font-semibold block">Total Invoice</span>
+              <span className="text-base font-extrabold text-emerald-400 font-mono">
+                ${a.totalAmount.toFixed(2)}
+              </span>
+              <span className="text-[10px] text-zinc-400 block">Status: {a.invoiceStatus}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
 
   if (isLoading) {
@@ -369,6 +460,18 @@ export function CustomerDashboard() {
           <Calendar className="w-4 h-4" />
           <span>Appointments & Reminders ({appointments.length + reminders.length})</span>
         </button>
+        {/*Comment : Fourth tab for Hero Feature 6 - a dedicated, cross-vehicle maintenance record, distinct from the per-vehicle mini-history already shown inside the Vehicle Health modal. */}
+        <button
+          onClick={() => setActiveTab("history")}
+          className={`pb-3 px-4 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${
+            activeTab === "history"
+              ? "border-sky-500 text-sky-400"
+              : "border-transparent text-zinc-400 hover:text-zinc-200"
+          }`}
+        >
+          <History className="w-4 h-4" />
+          <span>Service History ({appointments.filter((a) => a.status === "COMPLETED").length})</span>
+        </button>
       </div>
 
       {/* Tab 1: Garage */}
@@ -392,6 +495,7 @@ export function CustomerDashboard() {
               </button>
             </div>
           ) : (
+            /*Comment : Each card is a quick-glance vehicle profile — year, make/model, VIN, and odometer — with the Health Dashboard button below as the deep-dive entry point into that one vehicle's full story. */
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {vehicles.map((v) => (
                 <div
@@ -421,6 +525,7 @@ export function CustomerDashboard() {
                   </div>
 
                   <div className="pt-2 border-t border-zinc-800/80 space-y-2">
+                    {/*Comment : Opens the full Health Dashboard modal for THIS specific vehicle — its score, its history, its open issues. */}
                     <button
                       onClick={() => setHealthVehicle(v)}
                       className="w-full py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
@@ -640,51 +745,119 @@ export function CustomerDashboard() {
                 No scheduled service appointments. Click &quot;Book Service&quot; to reserve a workshop bay.
               </div>
             ) : (
-              <div className="space-y-3">
-                {appointments.map((a) => (
-                  <div
-                    key={a.appointmentId}
-                    className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-                  >
-                    <div className="space-y-1 text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-zinc-100 text-sm">{a.vehicleInfo}</span>
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded font-semibold border ${
-                            a.status === "COMPLETED"
-                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                              : a.status === "IN_PROGRESS"
-                              ? "bg-sky-500/10 text-sky-400 border-sky-500/20"
-                              : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                          }`}
-                        >
-                          {a.status}
-                        </span>
-                      </div>
-                      <div className="text-zinc-400 flex flex-wrap gap-x-4 gap-y-1">
-                        <span>Technician: <strong className="text-zinc-200">{a.mechanicName}</strong></span>
-                        <span>Date: <strong className="text-zinc-200">{new Date(a.scheduledStart).toLocaleString()}</strong></span>
-                        <span>Duration: <strong className="text-zinc-200">{a.durationMinutes} min</strong></span>
-                      </div>
-                      {a.serviceDescription && (
-                        <p className="text-zinc-400 text-[11px] mt-1">{a.serviceDescription}</p>
-                      )}
-                    </div>
+              /*Comment : The 3-category grouping - Not Completed (still being worked on), Pending (finished, bill not yet paid), Complete (finished and paid). Each is its own collapsible section; within each, an appointment with an unread message sorts to the top. */
+              (() => {
+                const { notCompleted, pending, complete } = groupAppointments(appointments, latestActivity, user?.userId);
+                return (
+                  <div className="space-y-4">
+                    <CollapsibleGroup
+                      title="Not Completed"
+                      count={notCompleted.length}
+                      accentClass="bg-amber-500/10 text-amber-400 border-amber-500/20"
+                    >
+                      {notCompleted.map(renderAppointmentCard)}
+                    </CollapsibleGroup>
 
-                    {a.status === "COMPLETED" && (
-                      <div className="p-3 bg-zinc-950/80 rounded-xl border border-zinc-800 text-right space-y-0.5">
-                        <span className="text-[10px] text-zinc-500 font-semibold block">Total Invoice</span>
-                        <span className="text-base font-extrabold text-emerald-400 font-mono">
-                          ${a.totalAmount.toFixed(2)}
-                        </span>
-                        <span className="text-[10px] text-zinc-400 block">Status: {a.invoiceStatus}</span>
-                      </div>
-                    )}
+                    <CollapsibleGroup
+                      title="Pending Payment"
+                      count={pending.length}
+                      accentClass="bg-sky-500/10 text-sky-400 border-sky-500/20"
+                    >
+                      {pending.map(renderAppointmentCard)}
+                    </CollapsibleGroup>
+
+                    <CollapsibleGroup
+                      title="Complete"
+                      count={complete.length}
+                      accentClass="bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                    >
+                      {complete.map(renderAppointmentCard)}
+                    </CollapsibleGroup>
                   </div>
-                ))}
-              </div>
+                );
+              })()
             )}
           </div>
+        </div>
+      )}
+
+      {/*Comment : Tab 4: Service History - Hero Feature 6 (Digital Service & Maintenance History). Every COMPLETED appointment across ALL of the customer's vehicles, newest first, showing exactly what the spec calls for: work description, parts cost, labor cost. Unlike the Vehicle Health modal's history section, this one isn't scoped to a single vehicle - it's the customer's full maintenance record in one place. */}
+      {activeTab === "history" && (
+        <div className="space-y-3">
+          {(() => {
+            /*Comment : Keep only finished work orders. Primary sort: an appointment with an unread message jumps to the top, so a reply you haven't seen yet is never buried in an otherwise-chronological list - "cars with new message shown at top", as requested. Everything else still reads newest-first, matching "viewable chronologically" from the spec. */
+            const completedLogs = appointments
+              .filter((a) => a.status === "COMPLETED")
+              .sort((a, b) => {
+                const aIsNew = hasNewMessage(findActivity(latestActivity, a.appointmentId), user?.userId);
+                const bIsNew = hasNewMessage(findActivity(latestActivity, b.appointmentId), user?.userId);
+                if (aIsNew !== bIsNew) return aIsNew ? -1 : 1;
+                return new Date(b.scheduledStart).getTime() - new Date(a.scheduledStart).getTime();
+              });
+
+            if (completedLogs.length === 0) {
+              return (
+                <div className="p-12 text-center rounded-2xl bg-zinc-900/40 border border-dashed border-zinc-800 space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-sky-500/10 text-sky-400 flex items-center justify-center mx-auto">
+                    <History className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-base font-bold text-zinc-200">No Completed Service Yet</h3>
+                  <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+                    Once a mechanic marks a booked appointment as completed, its work log will show up here.
+                  </p>
+                </div>
+              );
+            }
+
+            /*Comment : One compact card per completed appointment - just enough to identify it at a glance (date, vehicle, technician, invoice status). The full breakdown (parts bill + mechanic's notes + costs) lives one click away in the Expand modal instead of being dumped onto the card itself. */
+            return completedLogs.map((a) => {
+              const isNew = hasNewMessage(findActivity(latestActivity, a.appointmentId), user?.userId);
+              return (
+              <div
+                key={a.appointmentId}
+                className={`p-5 rounded-2xl bg-zinc-900/60 border shadow-lg ${isNew ? "border-rose-500/40" : "border-zinc-800"}`}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <span className="text-xs text-zinc-500 font-mono">
+                      {new Date(a.scheduledStart).toLocaleDateString()}
+                    </span>
+                    <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-1.5">
+                      {a.vehicleInfo}
+                      {/*Comment : Same "new message" signal as the badge on the Messages button elsewhere - here it doubles as the reason this card floated to the top of the list. */}
+                      {isNew && (
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-rose-400 bg-rose-500/10 border border-rose-500/20 px-1.5 py-0.5 rounded-full">
+                          ! New Message
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-xs text-zinc-400">
+                      Technician: <strong className="text-zinc-300">{a.mechanicName}</strong>
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col items-end gap-1.5">
+                    <div className="p-3 bg-zinc-950/80 rounded-xl border border-zinc-800 text-right space-y-0.5">
+                      <span className="text-[10px] text-zinc-500 font-semibold block">Total Invoice</span>
+                      <span className="text-base font-extrabold text-emerald-400 font-mono">
+                        ${a.totalAmount.toFixed(2)}
+                      </span>
+                      <span className="text-[10px] text-zinc-400 block">Status: {a.invoiceStatus}</span>
+                    </div>
+                    {/*Comment : Opens the full breakdown - parts bill, mechanic's notes, cost summary - in its own modal, closed only via the ✕ in its corner. */}
+                    <button
+                      onClick={() => setDetailAppointment(a)}
+                      className="flex items-center gap-1 text-[11px] font-semibold text-sky-400 hover:text-sky-300 transition-colors"
+                    >
+                      <span>Expand</span>
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              );
+            });
+          })()}
         </div>
       )}
 
@@ -927,6 +1100,22 @@ export function CustomerDashboard() {
                 onChange={(e) => setBookForm((p) => ({ ...p, serviceDescription: e.target.value }))}
               />
 
+              {/*Comment : Optional - lets the customer type the code (report id) from an AI Diagnosis they already discussed with the mechanic in chat, so this appointment gets linked back to that diagnosis. The backend verifies it's a real report and actually belongs to this customer before accepting it - typing the wrong number just gets a clear error, not a silent mismatch. */}
+              <FormInput
+                label="AI Diagnosis Code (optional)"
+                name="reportId"
+                id="appt-report-code"
+                type="number"
+                placeholder="e.g. 12 - from a Report you filed under AI Diagnostics"
+                value={bookForm.reportId?.toString() || ""}
+                onChange={(e) =>
+                  setBookForm((p) => ({
+                    ...p,
+                    reportId: e.target.value ? Number(e.target.value) : undefined,
+                  }))
+                }
+              />
+
               <div className="pt-2 flex items-center justify-end gap-2">
                 <button
                   type="button"
@@ -948,7 +1137,7 @@ export function CustomerDashboard() {
           </div>
         </div>
       )}
-      {/* MODAL 4: Vehicle Health Dashboard */}
+      {/*Comment : MODAL 4: Vehicle Health Dashboard — the customer's "everything about this one vehicle" view — profile info, the computed health score, open issues, service history, and upcoming reminders, all in one place. Only renders once a vehicle has been picked via the button above. */}
       {healthVehicle && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-5">
@@ -965,7 +1154,7 @@ export function CustomerDashboard() {
               </button>
             </div>
 
-            {/* Vehicle Profile */}
+            {/*Comment : Vehicle Profile — the car's basic identity: year/make/model, VIN, and current odometer, straight from its registration. */}
             <div className="p-4 rounded-xl bg-zinc-950/60 border border-zinc-800 space-y-2">
               <h3 className="text-lg font-bold text-zinc-100">
                 {healthVehicle.year} {healthVehicle.make} {healthVehicle.model}
@@ -982,7 +1171,7 @@ export function CustomerDashboard() {
               </div>
             </div>
 
-            {/* Vehicle Health Score */}
+            {/*Comment : Vehicle Health Score — runs the scoring rules above against this one vehicle's data and shows the result as a percentage, a color-coded bar, and a plain-English breakdown of exactly where points were lost (so the score never feels arbitrary). */}
             {(() => {
               const health = computeVehicleHealth(healthVehicle.vehicleId, reports, appointments, reminders);
               return (
@@ -1021,7 +1210,7 @@ export function CustomerDashboard() {
               );
             })()}
 
-            {/* Open Problem Reports */}
+            {/*Comment : Open Problem Reports — every issue reported for this vehicle that hasn't been resolved yet, with the AI's urgency rating shown so the most pressing ones stand out immediately. */}
             {(() => {
               const openReports = reports.filter(
                 (r) => r.vehicleId === healthVehicle.vehicleId && r.status === "OPEN"
@@ -1070,7 +1259,7 @@ export function CustomerDashboard() {
               );
             })()}
 
-            {/* Historical Service Logs */}
+            {/*Comment : Historical Service Logs — a chronological record of every appointment that's actually been completed on this vehicle: who worked on it, what was done, and what it cost. */}
             {(() => {
               const serviceLogs = appointments
                 .filter((a) => a.vehicleId === healthVehicle.vehicleId && a.status === "COMPLETED")
@@ -1089,7 +1278,10 @@ export function CustomerDashboard() {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {serviceLogs.map((a) => (
+                      {serviceLogs.map((a) => {
+                        /*Comment : Parses the field instead of printing it raw - service_description now carries "Customer Request:" / "Mechanic's Notes:" / "Parts Replaced:" markers, and showing that literally here would dump the raw markers at the customer instead of readable text. */
+                        const { customerRequest, narrative } = parseServiceDescription(a.serviceDescription);
+                        return (
                         <div
                           key={a.appointmentId}
                           className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800 text-xs space-y-1"
@@ -1103,8 +1295,17 @@ export function CustomerDashboard() {
                               ${a.totalAmount.toFixed(2)}
                             </span>
                           </div>
-                          {a.serviceDescription && (
-                            <p className="text-zinc-400">{a.serviceDescription}</p>
+                          {customerRequest && (
+                            <p className="text-zinc-400">
+                              <span className="text-zinc-500 font-semibold">Your Request: </span>
+                              {customerRequest}
+                            </p>
+                          )}
+                          {narrative && (
+                            <p className="text-zinc-400">
+                              <span className="text-zinc-500 font-semibold">Mechanic&apos;s Notes: </span>
+                              {narrative}
+                            </p>
                           )}
                           <div className="flex gap-3 text-[11px] text-zinc-500">
                             <span>Technician: {a.mechanicName}</span>
@@ -1112,14 +1313,15 @@ export function CustomerDashboard() {
                             <span>Labor: ${a.laborCost.toFixed(2)}</span>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
               );
             })()}
 
-            {/* Active Maintenance Reminders */}
+            {/*Comment : Active Maintenance Reminders — upcoming, not-yet-due maintenance the system has flagged for this vehicle (mileage- or calendar-based), so routine upkeep never gets forgotten. */}
             {(() => {
               const activeReminders = reminders.filter(
                 (rem) => rem.vehicleId === healthVehicle.vehicleId && rem.status === "ACTIVE"
@@ -1160,6 +1362,20 @@ export function CustomerDashboard() {
             })()}
           </div>
         </div>
+      )}
+
+      {/*Comment : Hero Feature 7's chat modal - only mounted while chatAppointment is set, so its polling effect (see AppointmentChatModal) genuinely stops existing the moment it's closed, not just visually hidden. */}
+      {chatAppointment && (
+        <AppointmentChatModal appointment={chatAppointment} onClose={() => setChatAppointment(null)} />
+      )}
+
+      {/*Comment : Service History's "Expand" detail modal - the itemized parts bill, mechanic's full notes, and cost summary for one completed appointment. Cross-references the appointment's optional reportId against the already-loaded reports array to hand the modal the original problem + AI diagnosis, if this appointment was booked against one - no extra fetch needed, the data's already in state. */}
+      {detailAppointment && (
+        <AppointmentDetailModal
+          appointment={detailAppointment}
+          problemReport={reports.find((r) => r.reportId === detailAppointment.reportId)}
+          onClose={() => setDetailAppointment(null)}
+        />
       )}
     </div>
   );

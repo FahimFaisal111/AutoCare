@@ -76,6 +76,22 @@ class AppointmentService {
       throw new ConflictError('Selected staff member is not a certified mechanic.');
     }
 
+    /*Comment : Validates the optional AI-diagnosis code the customer typed into the booking form. This field used to be dead code (nothing in the UI ever set it), so it was never actually exercised by real user input before - now that a customer types a raw report id by hand, it has to be checked properly: does a report with that id even exist, is it in this workshop, and (for a customer booking their own appointment) does it actually belong to THEM. Without this, a typo or someone else's number would silently link the appointment to the wrong diagnosis. */
+    let verifiedReportId = null;
+    if (reportId) {
+      const report = await problemReportRepo.findById(null, reportId);
+      if (!report) {
+        throw new NotFoundError('That AI Diagnosis code was not found. Double-check the code and try again.');
+      }
+      if (report.workshopId !== userPrincipal.workshopId) {
+        throw new ForbiddenError('That AI Diagnosis code does not belong to your workshop.');
+      }
+      if (userPrincipal.role === 'CUSTOMER' && report.customerId !== userPrincipal.userId) {
+        throw new ForbiddenError('That AI Diagnosis code does not belong to one of your own reports.');
+      }
+      verifiedReportId = parseInt(reportId, 10);
+    }
+
     const mysqlStart = this.formatDateTime(scheduledStart);
     const mysqlEnd = this.calculateEndTime(scheduledStart, durationMinutes);
 
@@ -97,7 +113,7 @@ class AppointmentService {
       const appointmentId = await appointmentRepo.create(conn, {
         vehicleId,
         mechanicId,
-        reportId: reportId ? parseInt(reportId, 10) : null,
+        reportId: verifiedReportId,
         scheduledStart: mysqlStart,
         durationMinutes: parseInt(durationMinutes, 10),
         status: 'SCHEDULED',
