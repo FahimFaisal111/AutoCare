@@ -42,6 +42,16 @@ class ProblemReportController {
       next(err);
     }
   }
+
+  async requestAppointment(req, res, next) {
+    try {
+      const reportId = parseInt(req.params.id, 10);
+      const result = await problemReportService.requestAppointmentReminder(reportId, req.user);
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 module.exports = new ProblemReportController();

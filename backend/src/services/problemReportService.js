@@ -8,6 +8,7 @@ const { withTransaction } = require('../config/db');
 const vehicleRepo = require('../repositories/vehicleRepo');
 const problemReportRepo = require('../repositories/problemReportRepo');
 const solutionRepo = require('../repositories/solutionRepo');
+const reminderRepo = require('../repositories/reminderRepo');
 const {
   BadRequestError,
   NotFoundError,
@@ -231,6 +232,38 @@ Respond with ONLY a raw valid JSON object with NO markdown formatting or code fe
     if (report.solutionId) {
       await solutionRepo.updateReviewedBy(null, reportId, userPrincipal.userId);
     }
+
+    return this.getProblemReportById(reportId, userPrincipal);
+  }
+
+  /*Comment : Replaces the earlier "chat about an unbooked diagnosis" idea, which hit a hard wall (chat needs an appointment that doesn't exist yet). This is the one-click "automatic reply" instead - a real REMINDER row on the customer's vehicle, reusing the existing REMINDER table (zero schema change), which already surfaces on the customer's dashboard under Predictive Maintenance Alerts. Not a fake confirmation toast - the customer genuinely sees this appear. */
+  async requestAppointmentReminder(reportId, userPrincipal) {
+    if (userPrincipal.role !== 'MECHANIC' && userPrincipal.role !== 'ADMIN') {
+      throw new ForbiddenError('Only certified mechanics or workshop managers can request an appointment.');
+    }
+
+    const report = await problemReportRepo.findById(null, reportId);
+    if (!report) {
+      throw new NotFoundError('Problem report not found');
+    }
+    if (report.workshopId !== userPrincipal.workshopId) {
+      throw new ForbiddenError('Unauthorized access to report outside your workshop tenant.');
+    }
+
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 3);
+    const dueDateStr = dueDate.toISOString().slice(0, 10);
+
+    const summary = report.description.length > 80 ? `${report.description.slice(0, 80)}...` : report.description;
+    const message = `Your mechanic reviewed your reported issue ("${summary}") and recommends booking a service appointment. Enter code ${reportId} as the AI Diagnosis Code when booking to link it to this diagnosis.`;
+
+    await reminderRepo.create(null, {
+      vehicleId: report.vehicleId,
+      reminderType: 'Appointment Requested',
+      dueDate: dueDateStr,
+      message,
+      status: 'ACTIVE'
+    });
 
     return this.getProblemReportById(reportId, userPrincipal);
   }
