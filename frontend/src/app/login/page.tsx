@@ -59,17 +59,17 @@ export default function LoginPage() {
         </p>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {errorMessage && <AlertMessage type="error" message={errorMessage} />}
 
         <FormInput
-          label="Email Address"
-          type="email"
+          label="Username or Email"
+          type="text"
           name="email"
           id="login-email"
-          placeholder="name@workshop.com"
+          placeholder="admin or name@workshop.com"
           required
-          autoComplete="email"
+          autoComplete="username"
           value={formData.email}
           onChange={handleChange}
           icon={<Mail className="w-4 h-4" />}
