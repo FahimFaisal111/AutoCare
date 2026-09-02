@@ -115,7 +115,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return adminSession;
       }
       if (
-        (normalizedEmail === "customer" || normalizedEmail === "customer@autocare.com" || normalizedEmail === "customer@customer.com" || normalizedEmail.includes("sarah"))
+        (normalizedEmail === "customer" || normalizedEmail === "customer@autocare.com" || normalizedEmail === "customer@customer.com" || normalizedEmail.includes("sarah")) &&
+        (payload.password === "test123" || payload.password === "customer" || payload.password === "admin123" || payload.password === "password123" || payload.password === "CustomerPass123!" || !payload.password.trim())
       ) {
         const customerSession: AuthResponse = {
           token: "demo-customer-token-" + Date.now(),
