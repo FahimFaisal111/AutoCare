@@ -12,6 +12,7 @@ import {
 import { FormInput } from "@/components/FormInput";
 import { AlertMessage } from "@/components/AlertMessage";
 import { AppointmentChatModal } from "@/components/AppointmentChatModal";
+import { InvoiceModal } from "@/components/InvoiceModal";
 import { CollapsibleGroup } from "@/components/CollapsibleGroup";
 import { groupAppointments } from "@/lib/appointmentGroups";
 import { hasNewMessage, findActivity } from "@/lib/unreadTracker";
@@ -24,6 +25,7 @@ import {
   DollarSign,
   Loader2,
   FileCheck,
+  FileText,
   BrainCircuit,
   X,
   AlertCircle,
@@ -43,6 +45,7 @@ export function MechanicDashboard() {
 
   // Active work order update modal
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
+  const [selectedInvoiceAppointment, setSelectedInvoiceAppointment] = useState<Appointment | null>(null);
   const [apptStatus, setApptStatus] = useState<"SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED">("SCHEDULED");
   /*Comment : The customer's original request, parsed out of the currently-open appointment - shown to the mechanic read-only for context, and carried forward unedited on save. This is the actual fix for the bug where the mechanic's own save used to overwrite the customer's note entirely, since both used to share one raw text field. */
   const [viewingCustomerRequest, setViewingCustomerRequest] = useState("");
@@ -277,7 +280,20 @@ export function MechanicDashboard() {
           <div>Customer: <strong className="text-[#0a2540]">{a.ownerName}</strong></div>
           <div>Scheduled: <strong className="text-[#0a2540] font-mono">{new Date(a.scheduledStart).toLocaleString()}</strong></div>
           <div>Duration: <strong className="text-[#0a2540]">{a.durationMinutes} min</strong></div>
-          <div>Invoiced: <strong className="text-emerald-600 font-mono">${a.totalAmount.toFixed(2)}</strong></div>
+          <div className="flex items-center gap-1.5">
+            <span>Invoiced: <strong className="text-emerald-600 font-mono">${a.totalAmount.toFixed(2)}</strong></span>
+            {a.status === "COMPLETED" && (
+              <button
+                type="button"
+                onClick={() => setSelectedInvoiceAppointment(a)}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#635bff]/10 hover:bg-[#635bff]/20 text-[#635bff] border border-[#635bff]/30 text-[11px] font-semibold transition-colors"
+                title="View Tax Invoice Receipt"
+              >
+                <FileText className="w-3 h-3" />
+                <span>Invoice</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/*Comment : Customer's request and the mechanic's own write-up are two genuinely different pieces of text (see serviceLog.ts) - shown as two separately labeled sections so they're never mixed together the way the original bug used to mix them. */}
@@ -696,6 +712,13 @@ export function MechanicDashboard() {
             </form>
           </div>
         </div>
+      )}
+      {selectedInvoiceAppointment && (
+        <InvoiceModal
+          appointment={selectedInvoiceAppointment}
+          workshopName={user?.workshopName}
+          onClose={() => setSelectedInvoiceAppointment(null)}
+        />
       )}
     </div>
   );

@@ -307,12 +307,49 @@ export function CustomerDashboard() {
           scheduledStart: new Date(Date.now() + 86400000).toISOString(),
           durationMinutes: 60,
           status: "SCHEDULED",
-          serviceDescription: "Front brake inspection, rotor resurfacing, and sensor calibration.",
+          serviceDescription: "Customer Request: Front brake inspection, rotor resurfacing, and sensor calibration.",
           partsCost: 150,
           laborCost: 120,
           totalAmount: 270,
           invoiceStatus: "PENDING",
           createdAt: new Date().toISOString(),
+        },
+        {
+          appointmentId: 100,
+          vehicleId: 1,
+          vehicleInfo: "2023 Tesla Model 3 Long Range",
+          ownerId: user?.userId || 2,
+          ownerName: `${user?.firstName || "Sarah"} ${user?.lastName || "Connor"}`,
+          mechanicId: 3,
+          mechanicName: "Marcus Vance",
+          reportId: 501,
+          scheduledStart: new Date(Date.now() - 86400000).toISOString(),
+          durationMinutes: 90,
+          status: "COMPLETED",
+          serviceDescription: "Customer Request: Front brake squeal on cold start.\nParts: Brake Pads ($120.00), Brake Rotor ($150.00)\nReplaced front brake pads and rotors, bled hydraulic brake lines, and recalibrated wheel speed sensors.",
+          partsCost: 270,
+          laborCost: 180,
+          totalAmount: 450,
+          invoiceStatus: "PAID",
+          createdAt: new Date(Date.now() - 86400000).toISOString(),
+        },
+        {
+          appointmentId: 99,
+          vehicleId: 2,
+          vehicleInfo: "2022 Ford Mustang GT",
+          ownerId: user?.userId || 2,
+          ownerName: `${user?.firstName || "Sarah"} ${user?.lastName || "Connor"}`,
+          mechanicId: 4,
+          mechanicName: "Elena Rostova",
+          scheduledStart: new Date(Date.now() - 172800000).toISOString(),
+          durationMinutes: 60,
+          status: "COMPLETED",
+          serviceDescription: "Customer Request: 2-year scheduled service and synthetic oil change.\nParts: Full Synthetic Oil ($65.00), OEM Oil Filter ($25.00)\nPerformed oil change and multipoint safety inspection.",
+          partsCost: 90,
+          laborCost: 110,
+          totalAmount: 200,
+          invoiceStatus: "PENDING",
+          createdAt: new Date(Date.now() - 172800000).toISOString(),
         }
       ];
 
@@ -527,13 +564,17 @@ export function CustomerDashboard() {
                 <span className="text-sm font-bold text-emerald-600 font-mono">
                   ${a.totalAmount.toFixed(2)}
                 </span>
+                <span className={`text-[10px] font-bold block ${a.invoiceStatus === "PAID" ? "text-emerald-600" : "text-amber-600"}`}>
+                  {a.invoiceStatus || "PENDING"}
+                </span>
               </div>
               <button
                 onClick={() => setSelectedInvoiceAppointment(a)}
-                className="p-2.5 rounded-lg bg-[#635bff]/10 hover:bg-[#635bff]/20 text-[#635bff] border border-[#635bff]/30 flex items-center justify-center transition-all active:scale-95 shadow-sm"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#635bff] hover:bg-[#5349e0] text-white font-semibold text-xs shadow-sm hover:-translate-y-0.5 transition-all"
                 title="View and Print Tax Invoice Receipt"
               >
                 <FileText className="w-4 h-4" />
+                <span>Invoice</span>
               </button>
             </div>
           )}
@@ -1077,20 +1118,33 @@ export function CustomerDashboard() {
                       </p>
                     </div>
 
-                    <div className="flex flex-col items-end gap-1.5">
-                      <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-right space-y-0.5">
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-right space-y-0.5">
                         <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Invoiced</span>
                         <span className="text-base font-bold text-emerald-600 font-mono">
                           ${a.totalAmount.toFixed(2)}
                         </span>
+                        <span className={`text-[10px] font-bold block ${a.invoiceStatus === "PAID" ? "text-emerald-600" : "text-amber-600"}`}>
+                          {a.invoiceStatus || "PENDING"}
+                        </span>
                       </div>
-                      <button
-                        onClick={() => setDetailAppointment(a)}
-                        className="flex items-center gap-1 text-[11px] font-bold text-[#635bff] hover:text-[#5349e0] transition-colors"
-                      >
-                        <span>Expand</span>
-                        <ChevronDown className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setSelectedInvoiceAppointment(a)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#635bff] hover:bg-[#5349e0] text-white font-semibold text-xs shadow-sm hover:-translate-y-0.5 transition-all"
+                          title="View and Print Tax Invoice Receipt"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>View Invoice</span>
+                        </button>
+                        <button
+                          onClick={() => setDetailAppointment(a)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-[#0a2540] text-xs font-semibold transition-colors"
+                        >
+                          <span>Expand</span>
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1505,14 +1559,6 @@ export function CustomerDashboard() {
         </div>
       )}
 
-      {/* Tax Invoice Receipt Modal */}
-      {selectedInvoiceAppointment && (
-        <InvoiceModal
-          appointment={selectedInvoiceAppointment}
-          workshopName={user?.workshopName}
-          onClose={() => setSelectedInvoiceAppointment(null)}
-        />
-      )}
 
       {/* MODAL 4: Vehicle Health Dashboard */}
       {healthVehicle && (
@@ -1757,6 +1803,7 @@ export function CustomerDashboard() {
           appointment={detailAppointment}
           problemReport={reports.find((r) => r.reportId === detailAppointment.reportId)}
           onClose={() => setDetailAppointment(null)}
+          onViewInvoice={(appt) => setSelectedInvoiceAppointment(appt)}
         />
       )}
 

@@ -10,10 +10,11 @@ interface AppointmentDetailModalProps {
   /*Comment : The problem report this appointment was booked against, if any - optional because plenty of appointments (routine maintenance, an oil change) are booked directly with no prior AI diagnosis behind them. */
   problemReport?: ProblemReport;
   onClose: () => void;
+  onViewInvoice?: (appointment: Appointment) => void;
 }
 
 /*Comment : The "Expand" view for a completed service - full itemized parts bill on the left, the mechanic's full written notes on the right (however long they are, no character limit), and the parts/labor/total cost summary pinned at the bottom. Closes only via the ✕ in its own top-right corner, matching every other modal in this app. */
-export function AppointmentDetailModal({ appointment, problemReport, onClose }: AppointmentDetailModalProps) {
+export function AppointmentDetailModal({ appointment, problemReport, onClose, onViewInvoice }: AppointmentDetailModalProps) {
   /*Comment : customerRequest and narrative are two genuinely different pieces of text now, not one shared field that the mechanic's save used to clobber - what the customer originally asked for when booking, versus what the mechanic actually wrote once the work was done. */
   const { customerRequest, narrative, parts } = parseServiceDescription(appointment.serviceDescription);
 
@@ -140,19 +141,34 @@ export function AppointmentDetailModal({ appointment, problemReport, onClose }: 
         </div>
 
         {/*Comment : Cost summary footer - always reads from the appointment's real, authoritative partsCost/laborCost/totalAmount fields (never the parsed text), so it's correct even for older records with no itemized parts list to show above. */}
-        <div className="border-t border-zinc-800 p-4 space-y-1.5">
-          <div className="flex items-center justify-between text-xs text-zinc-400">
-            <span>Parts Cost</span>
-            <span className="font-mono">${appointment.partsCost.toFixed(2)}</span>
+        <div className="border-t border-zinc-800 p-4 space-y-3">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs text-zinc-400">
+              <span>Parts Cost</span>
+              <span className="font-mono">${appointment.partsCost.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between text-xs text-zinc-400">
+              <span>Labor Cost</span>
+              <span className="font-mono">${appointment.laborCost.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm font-bold text-zinc-100 pt-1.5 border-t border-zinc-800/80">
+              <span>Total Cost</span>
+              <span className="font-mono text-emerald-400">${appointment.totalAmount.toFixed(2)}</span>
+            </div>
           </div>
-          <div className="flex items-center justify-between text-xs text-zinc-400">
-            <span>Labor Cost</span>
-            <span className="font-mono">${appointment.laborCost.toFixed(2)}</span>
-          </div>
-          <div className="flex items-center justify-between text-sm font-bold text-zinc-100 pt-1.5 border-t border-zinc-800/80">
-            <span>Total Cost</span>
-            <span className="font-mono text-emerald-400">${appointment.totalAmount.toFixed(2)}</span>
-          </div>
+
+          {onViewInvoice && (
+            <button
+              onClick={() => {
+                onClose();
+                onViewInvoice(appointment);
+              }}
+              className="w-full py-2.5 px-4 rounded-xl bg-[#635bff] hover:bg-[#5349e0] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-[0.99]"
+            >
+              <FileText className="w-4 h-4" />
+              <span>View &amp; Print Official Tax Invoice</span>
+            </button>
+          )}
         </div>
       </div>
     </div>
