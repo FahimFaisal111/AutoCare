@@ -4,8 +4,8 @@ import { AuthProvider } from "@/context/AuthContext";
 import { Navbar } from "@/components/Navbar";
 
 export const metadata: Metadata = {
-  title: "AutoCare AI - Vehicle Service & Maintenance SaaS",
-  description: "Next-Gen AI-Powered Automotive Service & Multi-Tenant Workshop Management",
+  title: "AutoCare AI - Multi-Tenant Automotive Intelligence SaaS",
+  description: "Next-Gen AI-Powered Automotive Service & Multi-Tenant Workshop Management Platform",
 };
 
 export default function RootLayout({
@@ -14,11 +14,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className="bg-zinc-950 text-zinc-100 min-h-[100dvh] flex flex-col antialiased selection:bg-sky-500/30 selection:text-sky-200">
+    <html lang="en">
+      <body className="bg-[#f6f9fc] text-[#0a2540] min-h-[100dvh] flex flex-col antialiased selection:bg-[#635bff]/20 selection:text-[#635bff]">
         <AuthProvider>
           <Navbar />
-          <main className="flex-1 flex flex-col justify-center items-center px-4 py-8 sm:py-12">
+          <main className="flex-1 flex flex-col justify-center items-center px-4 sm:px-6 md:px-8 py-8 md:py-14">
             {children}
           </main>
         </AuthProvider>

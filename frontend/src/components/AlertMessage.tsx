@@ -15,18 +15,18 @@ export function AlertMessage({ type, message, className }: AlertMessageProps) {
     <div
       role="alert"
       className={clsx(
-        "flex items-start gap-3 p-3.5 rounded-lg text-sm border transition-all duration-200",
-        type === "error" && "bg-red-950/40 border-red-900/50 text-red-200",
-        type === "success" && "bg-emerald-950/40 border-emerald-900/50 text-emerald-200",
+        "flex items-start gap-3 p-3.5 rounded-lg text-sm border shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-all duration-200",
+        type === "error" && "bg-red-50 border-red-200 text-red-700",
+        type === "success" && "bg-emerald-50 border-emerald-200 text-emerald-800",
         className
       )}
     >
       {type === "error" ? (
-        <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
       ) : (
-        <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+        <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
       )}
-      <div className="flex-1 leading-snug">{message}</div>
+      <div className="flex-1 leading-relaxed font-medium">{message}</div>
     </div>
   );
 }

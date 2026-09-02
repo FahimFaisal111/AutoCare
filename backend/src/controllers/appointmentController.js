@@ -42,6 +42,7 @@ class AppointmentController {
       next(err);
     }
   }
+
 }
 
 module.exports = new AppointmentController();

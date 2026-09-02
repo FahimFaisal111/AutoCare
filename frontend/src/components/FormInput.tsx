@@ -17,18 +17,17 @@ export const FormInput = forwardRef<HTMLInputElement, FormInputProps>(
         {label && (
           <label
             htmlFor={inputId}
-            className="text-xs font-semibold uppercase tracking-wider text-zinc-400 flex items-center justify-between"
+            className="text-xs font-semibold text-[#0a2540] flex items-center justify-between"
           >
             <span>
-              {label} {required && <span className="text-red-400">*</span>}
+              {label} {required && <span className="text-[#635bff]">*</span>}
             </span>
           </label>
         )}
 
-
         <div className="relative flex items-center">
           {icon && (
-            <div className="absolute left-3.5 text-zinc-500 pointer-events-none flex items-center justify-center">
+            <div className="absolute left-3.5 text-gray-400 pointer-events-none flex items-center justify-center">
               {icon}
             </div>
           )}
@@ -40,12 +39,11 @@ export const FormInput = forwardRef<HTMLInputElement, FormInputProps>(
             aria-invalid={!!error}
             aria-describedby={error ? `${inputId}-error` : helperText ? `${inputId}-helper` : undefined}
             className={clsx(
-              "w-full rounded-lg bg-zinc-900/80 border text-sm text-zinc-100 placeholder:text-zinc-600 transition-all duration-150 outline-none",
-              "py-2.5",
+              "w-full rounded-lg bg-white border text-sm text-[#0a2540] placeholder-gray-400 shadow-[0_1px_2px_rgba(0,0,0,0.05)] outline-none transition-all py-2.5",
               icon ? "pl-10 pr-3.5" : "px-3.5",
               error
-                ? "border-red-500/60 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
-                : "border-zinc-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 hover:border-zinc-700",
+                ? "border-red-400 focus:ring-2 focus:ring-red-400/30 focus:border-red-400"
+                : "border-gray-300 hover:border-gray-400 focus:ring-2 focus:ring-[#635bff]/30 focus:border-[#635bff]",
               className
             )}
             {...props}
@@ -53,13 +51,13 @@ export const FormInput = forwardRef<HTMLInputElement, FormInputProps>(
         </div>
 
         {error && (
-          <p id={`${inputId}-error`} className="text-xs text-red-400 font-medium">
+          <p id={`${inputId}-error`} className="text-xs text-red-500 font-medium">
             {error}
           </p>
         )}
 
         {!error && helperText && (
-          <p id={`${inputId}-helper`} className="text-xs text-zinc-500">
+          <p id={`${inputId}-helper`} className="text-xs text-gray-500">
             {helperText}
           </p>
         )}
