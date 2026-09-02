@@ -145,6 +145,21 @@ class VehicleRepository {
     const [rows] = await db.query(sql, [workshopId]);
     return parseInt(rows[0]?.count || 0, 10);
   }
+
+  /**
+   * Update vehicle current odometer reading.
+   * Parameterized raw SQL, no schema changes.
+   */
+  async updateOdometer(executor, vehicleId, odometer) {
+    const db = executor || pool;
+    const sql = `
+      UPDATE vehicle
+      SET odometer = ?
+      WHERE vehicle_id = ?;
+    `;
+    const [result] = await db.query(sql, [odometer, vehicleId]);
+    return result.affectedRows > 0;
+  }
 }
 
 module.exports = new VehicleRepository();

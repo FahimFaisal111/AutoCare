@@ -64,9 +64,12 @@ app.use((req, res, next) => {
 app.use(errorHandler);
 
 // 7. Server Initialization
+const reminderJob = require('./jobs/reminderJob');
+
 async function startServer() {
   try {
     await testConnection();
+    reminderJob.start();
     app.listen(PORT, () => {
       console.log(`=======================================================`);
       console.log(`🚀 AutoCare AI Backend running on http://localhost:${PORT}`);

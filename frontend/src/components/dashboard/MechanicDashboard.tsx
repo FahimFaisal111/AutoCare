@@ -51,6 +51,13 @@ export function MechanicDashboard() {
   const [laborCost, setLaborCost] = useState(0);
   /*Comment : The free-text narrative only - never the combined description. Combined right before the request goes out, in handleUpdateAppt, via buildServiceDescription. */
   const [narrative, setNarrative] = useState("");
+  const [currentOdo, setCurrentOdo] = useState("");
+
+  // Manual reminder creation modal
+  const [reminderVehicle, setReminderVehicle] = useState<{ vehicleId: number; vehicleInfo: string } | null>(null);
+  const [reminderType, setReminderType] = useState("OIL_SERVICE");
+  const [reminderDueDate, setReminderDueDate] = useState("");
+  const [reminderMessage, setReminderMessage] = useState("");
 
   /*Comment : Which appointment's message thread is open right now, if any - Hero Feature 7, mirrors the same state/component CustomerDashboard uses, so both sides of the conversation share one implementation. */
   const [chatAppointment, setChatAppointment] = useState<Appointment | null>(null);
@@ -89,6 +96,7 @@ export function MechanicDashboard() {
     setParts(parsed.parts.length > 0 ? parsed.parts : [{ name: "", cost: 0 }]);
     setNarrative(parsed.narrative);
     setLaborCost(appt.laborCost || 0);
+    setCurrentOdo("");
     setActionError("");
     setActionSuccess("");
   };
@@ -118,6 +126,7 @@ export function MechanicDashboard() {
         partsCost: partsTotal,
         laborCost: Number(laborCost),
         serviceDescription: combinedDescription,
+        odometer: currentOdo ? parseInt(currentOdo, 10) : undefined,
       });
       setActionSuccess(`Work order #${selectedAppt.appointmentId} updated successfully.`);
       setSelectedAppt(null);
@@ -125,6 +134,31 @@ export function MechanicDashboard() {
     } catch (err: unknown) {
       const error = err as ApiError;
       setActionError(error.message || "Failed to update work order.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCreateReminder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reminderVehicle || !reminderDueDate) return;
+    setIsSubmitting(true);
+    setActionError("");
+    setActionSuccess("");
+
+    try {
+      await api.createVehicleReminder(reminderVehicle.vehicleId, {
+        reminderType,
+        dueDate: reminderDueDate,
+        message: reminderMessage || `Technician-scheduled maintenance reminder for ${reminderDueDate}.`,
+      });
+      setActionSuccess(`Maintenance reminder scheduled for ${reminderVehicle.vehicleInfo}.`);
+      setReminderVehicle(null);
+      setReminderDueDate("");
+      setReminderMessage("");
+    } catch (err: unknown) {
+      const error = err as ApiError;
+      setActionError(error.message || "Failed to schedule reminder.");
     } finally {
       setIsSubmitting(false);
     }
@@ -220,6 +254,14 @@ export function MechanicDashboard() {
                   !
                 </span>
               )}
+            </button>
+            <button
+              onClick={() => setReminderVehicle({ vehicleId: a.vehicleId, vehicleInfo: a.vehicleInfo })}
+              className="px-3 py-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 text-[#0a2540] font-semibold text-xs shadow-sm hover:-translate-y-0.5 transition-all duration-[300ms] ease-out flex items-center gap-1"
+              title="Schedule Maintenance Reminder"
+            >
+              <Bell className="w-3.5 h-3.5 text-amber-500" />
+              <span className="hidden sm:inline">Reminder</span>
             </button>
             <button
               onClick={() => handleOpenApptModal(a)}
@@ -387,14 +429,22 @@ export function MechanicDashboard() {
                     </span>
 
                     <div className="flex items-center gap-2">
-                      {/*Comment : Two options per case, gated on resolved status - not chat (chat needs an appointment that a fresh diagnosis doesn't have yet). Request Appointment only shows while the case is still OPEN - once resolved there's nothing left to ask the customer to book. */}
+                      {/* Two options per case, plus reminder scheduler */}
+                      <button
+                        onClick={() => setReminderVehicle({ vehicleId: r.vehicleId, vehicleInfo: r.vehicleInfo })}
+                        className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 text-[#0a2540] font-semibold text-xs flex items-center gap-1 transition-all duration-[300ms] ease-out hover:-translate-y-0.5"
+                        title="Schedule Maintenance Reminder"
+                      >
+                        <Bell className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Reminder</span>
+                      </button>
                       {r.status === "OPEN" && (
                         <button
                           onClick={() => handleRequestAppointment(r.reportId)}
                           disabled={isSubmitting}
                           className="px-3 py-1 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 text-[#0a2540] font-bold text-xs flex items-center gap-1 transition-all duration-[300ms] ease-out hover:-translate-y-0.5 disabled:opacity-50"
                         >
-                          <Bell className="w-3.5 h-3.5 text-[#635bff]" />
+                          <Clock className="w-3.5 h-3.5 text-[#635bff]" />
                           <span>Request Appointment</span>
                         </button>
                       )}
@@ -502,16 +552,27 @@ export function MechanicDashboard() {
                 </div>
               </div>
 
-              <FormInput
-                label="Labor Cost ($)"
-                name="laborCost"
-                id="upd-labor"
-                type="number"
-                step="0.01"
-                required
-                value={laborCost.toString()}
-                onChange={(e) => setLaborCost(Number(e.target.value))}
-              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <FormInput
+                  label="Labor Cost ($)"
+                  name="laborCost"
+                  id="upd-labor"
+                  type="number"
+                  step="0.01"
+                  required
+                  value={laborCost.toString()}
+                  onChange={(e) => setLaborCost(Number(e.target.value))}
+                />
+                <FormInput
+                  label="Current Odometer (km)"
+                  name="currentOdometer"
+                  id="upd-odo"
+                  type="number"
+                  placeholder="e.g. 52000"
+                  value={currentOdo}
+                  onChange={(e) => setCurrentOdo(e.target.value)}
+                />
+              </div>
 
               <FormInput
                 label="Completed Work Description"
@@ -552,9 +613,89 @@ export function MechanicDashboard() {
         </div>
       )}
 
-      {/*Comment : Hero Feature 7's chat modal, same shared component and same "only mounted while a chat is open" rule as CustomerDashboard, so the poll timer never runs for a thread nobody is looking at. */}
+      {/* Hero Feature 7's chat modal */}
       {chatAppointment && (
         <AppointmentChatModal appointment={chatAppointment} onClose={() => setChatAppointment(null)} />
+      )}
+
+      {/* Manual Reminder Creation Modal */}
+      {reminderVehicle && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white border border-gray-200 rounded-2xl shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <Bell className="w-4 h-4 text-amber-500" />
+                <h3 className="text-sm font-bold text-[#0a2540]">Schedule Maintenance Reminder</h3>
+              </div>
+              <button onClick={() => setReminderVehicle(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="text-xs text-gray-600 bg-gray-50 p-3 rounded-lg border border-gray-200">
+              Target Vehicle: <strong className="text-[#0a2540]">{reminderVehicle.vehicleInfo}</strong>
+            </div>
+
+            <form onSubmit={handleCreateReminder} className="space-y-3.5">
+              <div>
+                <label className="text-xs font-semibold text-[#0a2540] block mb-1">Reminder Type</label>
+                <select
+                  value={reminderType}
+                  onChange={(e) => setReminderType(e.target.value)}
+                  className="w-full p-2.5 rounded-lg bg-white border border-gray-300 text-xs text-[#0a2540] focus:outline-none focus:ring-2 focus:ring-[#635bff] shadow-sm font-medium"
+                >
+                  <option value="OIL_SERVICE">Oil & Filter Service</option>
+                  <option value="TIRE_ROTATION">Tire Rotation & Balance</option>
+                  <option value="BRAKE_INSPECTION">Brake System Inspection</option>
+                  <option value="COOLANT_SERVICE">Coolant Flush & Cooling Check</option>
+                  <option value="TRANSMISSION_FLUID">Transmission Fluid Service</option>
+                  <option value="ROUTINE_INSPECTION">Multi-Point Annual Inspection</option>
+                  <option value="GENERAL_MAINTENANCE">General Preventive Maintenance</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-[#0a2540] block mb-1">Due Date</label>
+                <input
+                  type="date"
+                  required
+                  value={reminderDueDate}
+                  onChange={(e) => setReminderDueDate(e.target.value)}
+                  className="w-full p-2.5 rounded-lg bg-white border border-gray-300 text-xs text-[#0a2540] focus:outline-none focus:ring-2 focus:ring-[#635bff] shadow-sm font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-[#0a2540] block mb-1">Reminder Note / Message</label>
+                <textarea
+                  rows={3}
+                  value={reminderMessage}
+                  onChange={(e) => setReminderMessage(e.target.value)}
+                  placeholder="e.g. Front brake pads are at 4mm. Schedule rotor and pad replacement by next quarter."
+                  className="w-full p-2.5 rounded-lg bg-white border border-gray-300 text-xs text-[#0a2540] focus:outline-none focus:ring-2 focus:ring-[#635bff] shadow-sm resize-none"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setReminderVehicle(null)}
+                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !reminderDueDate}
+                  className="px-5 py-2.5 rounded-lg bg-[#635bff] hover:bg-[#5349e0] text-white font-semibold text-xs shadow-[0_2px_4px_rgba(99,91,255,0.2)] hover:-translate-y-0.5 transition-all duration-[300ms] ease-out flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}
+                  <span>Save Reminder</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

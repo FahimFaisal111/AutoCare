@@ -139,6 +139,35 @@ class ProblemReportRepository {
     const [result] = await db.query(sql, [status, reportId]);
     return result.affectedRows > 0;
   }
+
+  /**
+   * Find all historical problem reports and associated solutions for a specific vehicle.
+   */
+  async findAllByVehicleId(executor, vehicleId) {
+    const db = executor || pool;
+    const sql = `
+      SELECT 
+        pr.report_id AS reportId,
+        pr.customer_id AS customerId,
+        pr.vehicle_id AS vehicleId,
+        pr.description,
+        pr.status,
+        pr.created_at AS createdAt,
+        sr.solution_id AS solutionId,
+        sr.description AS solutionDescription,
+        sr.probable_cause AS probableCause,
+        sr.recommended_action AS recommendedAction,
+        sr.urgency,
+        sr.confidence_score AS confidenceScore,
+        sr.created_at AS solutionCreatedAt
+      FROM problem_report pr
+      LEFT JOIN solution_report sr ON pr.report_id = sr.report_id
+      WHERE pr.vehicle_id = ?
+      ORDER BY pr.created_at DESC;
+    `;
+    const [rows] = await db.query(sql, [vehicleId]);
+    return rows;
+  }
 }
 
 module.exports = new ProblemReportRepository();

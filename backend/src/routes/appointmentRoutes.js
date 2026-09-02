@@ -10,6 +10,9 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 
 router.use(authenticateToken);
 
+/* Advisory technician availability and smart slot suggestions for customer booking workflow */
+router.get('/availability', (req, res, next) => appointmentController.getTechnicianAvailability(req, res, next));
+
 router.post('/', (req, res, next) => appointmentController.createAppointment(req, res, next));
 router.get('/', (req, res, next) => appointmentController.getAppointments(req, res, next));
 router.get('/:id', (req, res, next) => appointmentController.getAppointmentById(req, res, next));

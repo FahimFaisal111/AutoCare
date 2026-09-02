@@ -252,6 +252,61 @@ class AppointmentRepository {
     const [rows] = await db.query(sql, [workshopId, status]);
     return parseInt(rows[0]?.count || 0, 10);
   }
+
+  /**
+   * Advisory Query: Find appointments for mechanics in a workshop that overlap a time window.
+   * Excludes CANCELLED appointments.
+   * Parameterized raw SQL ensuring multi-tenant isolation.
+   */
+  async findAppointmentsByWorkshopAndDateRange(executor, { workshopId, startWindow, endWindow }) {
+    const db = executor || pool;
+    const sql = `
+      SELECT 
+        a.appointment_id AS appointmentId,
+        a.mechanic_id AS mechanicId,
+        CONCAT(m.first_name, ' ', m.last_name) AS mechanicName,
+        a.scheduled_start AS scheduledStart,
+        a.duration_minutes AS durationMinutes,
+        a.status
+      FROM appointment a
+      JOIN user m ON a.mechanic_id = m.user_id
+      WHERE m.workshop_id = ?
+        AND a.status != 'CANCELLED'
+        AND a.scheduled_start < ?
+        AND DATE_ADD(a.scheduled_start, INTERVAL a.duration_minutes MINUTE) > ?
+      ORDER BY a.scheduled_start ASC;
+    `;
+    const [rows] = await db.query(sql, [workshopId, endWindow, startWindow]);
+    return rows;
+  }
+
+  /**
+   * Find completed service appointments for a vehicle to build diagnostic historical context.
+   */
+  async findCompletedByVehicleId(executor, vehicleId) {
+    const db = executor || pool;
+    const sql = `
+      SELECT 
+        a.appointment_id AS appointmentId,
+        a.vehicle_id AS vehicleId,
+        a.mechanic_id AS mechanicId,
+        CONCAT(m.first_name, ' ', m.last_name) AS mechanicName,
+        a.scheduled_start AS scheduledStart,
+        a.duration_minutes AS durationMinutes,
+        a.status,
+        a.service_description AS serviceDescription,
+        a.parts_cost AS partsCost,
+        a.labor_cost AS laborCost,
+        a.created_at AS createdAt
+      FROM appointment a
+      JOIN user m ON a.mechanic_id = m.user_id
+      WHERE a.vehicle_id = ? AND a.status = 'COMPLETED'
+      ORDER BY a.scheduled_start DESC
+      LIMIT 10;
+    `;
+    const [rows] = await db.query(sql, [vehicleId]);
+    return rows;
+  }
 }
 
 module.exports = new AppointmentRepository();

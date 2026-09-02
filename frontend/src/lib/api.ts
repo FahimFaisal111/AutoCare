@@ -147,6 +147,7 @@ export interface AppointmentStatusUpdatePayload {
   partsCost?: number;
   laborCost?: number;
   serviceDescription?: string;
+  odometer?: number;
 }
 
 export interface Appointment {
@@ -167,6 +168,37 @@ export interface Appointment {
   totalAmount: number;
   invoiceStatus?: string;
   createdAt: string;
+}
+export interface RecommendedSlot {
+  mechanicId: number;
+  mechanicName: string;
+  scheduledStart: string;
+  displayTime: string;
+  displayDate: string;
+  durationMinutes: number;
+}
+
+export interface TechnicianAvailabilityInfo {
+  mechanicId: number;
+  name: string;
+  role: string;
+  employeeCode?: string;
+  status: string;
+  isAvailable: boolean;
+  busyUntil?: string | null;
+  nextAvailableSlot?: string | null;
+  availableSlotsCount: number;
+  totalAppointmentsToday: number;
+}
+
+export interface TechnicianAvailabilityResponse {
+  date: string;
+  durationMinutes: number;
+  isClosed: boolean;
+  message?: string;
+  workingHours: { open: string; close: string };
+  technicians: TechnicianAvailabilityInfo[];
+  recommendedSlots: RecommendedSlot[];
 }
 
 /*Comment : One row from the CONVERSATION table (Hero Feature 7), already joined with the sender's name/role on the backend so the chat UI never has to look that up separately. */
@@ -190,11 +222,17 @@ export interface LatestActivity {
 export interface Reminder {
   reminderId: number;
   vehicleId: number;
-  vehicleInfo: string;
+  vehicleInfo?: string;
+  vin?: string;
+  currentOdometer?: number | null;
   reminderType: string;
   dueDate: string;
   message: string;
-  status: string;
+  status: "ACTIVE" | "DUE" | "COMPLETED" | "DISMISSED" | string;
+  isDue?: boolean;
+  dueReason?: "CALENDAR_DUE" | "MILEAGE_DUE" | "UPCOMING";
+  milestoneKm?: number | null;
+  createdAt?: string;
 }
 
 export interface WorkshopStats {
@@ -378,6 +416,25 @@ class ApiClient {
     });
   }
 
+  async getTechnicianAvailability(params?: {
+    date?: string;
+    durationMinutes?: number;
+    targetDateTime?: string;
+  }): Promise<TechnicianAvailabilityResponse> {
+    const query = new URLSearchParams();
+    if (params?.date) query.set("date", params.date);
+    if (params?.durationMinutes) query.set("durationMinutes", params.durationMinutes.toString());
+    if (params?.targetDateTime) query.set("targetDateTime", params.targetDateTime);
+
+    const qs = query.toString();
+    return this.request<TechnicianAvailabilityResponse>(
+      `/api/appointments/availability${qs ? `?${qs}` : ""}`,
+      {
+        method: "GET",
+      }
+    );
+  }
+
   async createAppointment(payload: AppointmentPayload): Promise<Appointment> {
     return this.request<Appointment>("/api/appointments", {
       method: "POST",
@@ -418,6 +475,32 @@ class ApiClient {
   async getReminders(): Promise<Reminder[]> {
     return this.request<Reminder[]>("/api/reminders", {
       method: "GET",
+    });
+  }
+
+  async getVehicleReminders(vehicleId: number): Promise<Reminder[]> {
+    return this.request<Reminder[]>(`/api/vehicles/${vehicleId}/reminders`, {
+      method: "GET",
+    });
+  }
+
+  async createVehicleReminder(
+    vehicleId: number,
+    data: { reminderType: string; dueDate: string; message?: string }
+  ): Promise<Reminder> {
+    return this.request<Reminder>(`/api/vehicles/${vehicleId}/reminders`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateReminderStatus(
+    reminderId: number,
+    status: "ACTIVE" | "DUE" | "COMPLETED" | "DISMISSED"
+  ): Promise<Reminder> {
+    return this.request<Reminder>(`/api/reminders/${reminderId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
     });
   }
 

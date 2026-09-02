@@ -11,6 +11,8 @@ import {
   UserProfile,
   LatestActivity,
   ApiError,
+  RecommendedSlot,
+  TechnicianAvailabilityResponse,
 } from "@/lib/api";
 import { FormInput } from "@/components/FormInput";
 import { AlertMessage } from "@/components/AlertMessage";
@@ -69,11 +71,16 @@ function computeVehicleHealth(
     breakdown.push("+0 pts — no open problem reports");
   }
 
-  const activeReminders = reminders.filter((rem) => rem.vehicleId === vehicleId && rem.status === "ACTIVE");
+  const activeReminders = reminders.filter(
+    (rem) => rem.vehicleId === vehicleId && (rem.status === "ACTIVE" || rem.status === "DUE")
+  );
   if (activeReminders.length > 0) {
-    const penalty = activeReminders.length * 5;
+    const dueCount = activeReminders.filter((r) => r.isDue).length;
+    const penalty = dueCount * 10 + (activeReminders.length - dueCount) * 4;
     score -= penalty;
-    breakdown.push(`-${penalty} pts — ${activeReminders.length} active maintenance alert${activeReminders.length > 1 ? "s" : ""}`);
+    breakdown.push(
+      `-${penalty} pts — ${activeReminders.length} active maintenance alert${activeReminders.length > 1 ? "s" : ""}${dueCount > 0 ? ` (${dueCount} due now)` : ""}`
+    );
   } else {
     breakdown.push("+0 pts — no active reminders");
   }
@@ -177,6 +184,52 @@ export function CustomerDashboard() {
   const [actionError, setActionError] = useState("");
   const [actionSuccess, setActionSuccess] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Smart Slot Suggestions & Technician Availability
+  const [availabilityData, setAvailabilityData] = useState<TechnicianAvailabilityResponse | null>(null);
+  const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
+
+  const fetchAvailability = async (targetDateStr?: string, duration?: number) => {
+    setIsLoadingAvailability(true);
+    try {
+      const d = targetDateStr || (bookForm.scheduledStart ? bookForm.scheduledStart.slice(0, 10) : "");
+      const dur = duration !== undefined ? duration : bookForm.durationMinutes;
+      const res = await api.getTechnicianAvailability({
+        date: d || undefined,
+        durationMinutes: dur,
+      });
+      setAvailabilityData(res);
+    } catch (err) {
+      console.error("Failed to fetch technician availability", err);
+    } finally {
+      setIsLoadingAvailability(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showBookModal) {
+      const d = bookForm.scheduledStart ? bookForm.scheduledStart.slice(0, 10) : "";
+      fetchAvailability(d, bookForm.durationMinutes);
+    }
+  }, [showBookModal, bookForm.durationMinutes]);
+
+  const handleSelectSlot = (slot: RecommendedSlot) => {
+    setBookForm((prev) => ({
+      ...prev,
+      mechanicId: slot.mechanicId,
+      scheduledStart: slot.scheduledStart.slice(0, 16),
+      durationMinutes: slot.durationMinutes,
+    }));
+  };
+
+  const handleScheduledStartChange = (val: string) => {
+    const prevDate = bookForm.scheduledStart ? bookForm.scheduledStart.slice(0, 10) : "";
+    const newDate = val ? val.slice(0, 10) : "";
+    setBookForm((p) => ({ ...p, scheduledStart: val }));
+    if (newDate && newDate !== prevDate) {
+      fetchAvailability(newDate, bookForm.durationMinutes);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -661,6 +714,16 @@ export function CustomerDashboard() {
                         </div>
                       )}
 
+                      {/* Advisory Warning Note */}
+                      <div className="pt-2 border-t border-blue-200/70">
+                        <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50/90 border border-amber-200/80 text-amber-900 text-[11px] font-medium leading-relaxed shadow-sm">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                          <span>
+                            Please contact Mechanic if you are not experienced, Ai generated responses are merely suggestions only, perform necessary actions only if you are an expert
+                          </span>
+                        </div>
+                      </div>
+
                       {r.solution.reviewerName && (
                         <div className="pt-2 flex items-center gap-1.5 text-xs text-emerald-700 font-bold border-t border-blue-200">
                           <UserCheck className="w-4 h-4 text-emerald-600" />
@@ -679,11 +742,17 @@ export function CustomerDashboard() {
       {/* Tab 3: Appointments & Reminders */}
       {activeTab === "appointments" && (
         <div className="space-y-6">
-          {/* Predictive Alerts */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-500" />
-              <h3 className="text-sm font-bold text-[#0a2540]">Predictive Maintenance Alerts</h3>
+          {/* Predictive Maintenance & Alerts */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-500" />
+                <h3 className="text-sm font-bold text-[#0a2540]">Maintenance Reminders & Alerts</h3>
+              </div>
+              <span className="text-[11px] text-gray-500 font-medium">
+                {reminders.filter((r) => (r.status === "ACTIVE" || r.status === "DUE") && r.isDue).length} due now •{" "}
+                {reminders.filter((r) => (r.status === "ACTIVE" || r.status === "DUE") && !r.isDue).length} upcoming
+              </span>
             </div>
 
             {reminders.length === 0 ? (
@@ -691,25 +760,98 @@ export function CustomerDashboard() {
                 No active maintenance alerts for your vehicles.
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {reminders.map((rem) => (
-                  <div
-                    key={rem.reminderId}
-                    className="p-4 rounded-xl bg-white shadow-[0_2px_4px_rgba(0,0,0,0.04),0_8px_16px_rgba(0,0,0,0.08)] border border-gray-100 flex items-start gap-3.5"
-                  >
-                    <div className="p-2.5 rounded-lg bg-amber-50 text-amber-600 border border-amber-200">
-                      <Clock className="w-4 h-4" />
-                    </div>
-                    <div className="space-y-1 text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-[#0a2540]">{rem.reminderType}</span>
-                        <span className="text-[11px] text-gray-400 font-mono font-semibold">Due: {rem.dueDate}</span>
+              <div className="space-y-4">
+                {/* 1. Due Now (Action Required) */}
+                {(() => {
+                  const dueItems = reminders.filter(
+                    (r) => (r.status === "ACTIVE" || r.status === "DUE") && r.isDue
+                  );
+                  if (dueItems.length === 0) return null;
+                  return (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-rose-700 uppercase tracking-wider">
+                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                        <span>Action Required: Due Now ({dueItems.length})</span>
                       </div>
-                      <span className="text-gray-500 block">{rem.vehicleInfo}</span>
-                      <p className="text-gray-600 text-[11px] leading-relaxed">{rem.message}</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                        {dueItems.map((rem) => (
+                          <div
+                            key={rem.reminderId}
+                            className="p-4 rounded-xl bg-rose-50/50 border border-rose-200 shadow-sm flex items-start gap-3.5 hover:shadow-md transition-all duration-200"
+                          >
+                            <div className="p-2.5 rounded-lg bg-rose-100 text-rose-700 border border-rose-200 shrink-0">
+                              <AlertTriangle className="w-4 h-4" />
+                            </div>
+                            <div className="space-y-1.5 text-xs flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-bold text-[#0a2540]">{rem.reminderType}</span>
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-600 text-white shadow-xs">
+                                  {rem.dueReason === "MILEAGE_DUE" ? "MILEAGE DUE" : "CALENDAR DUE"}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 text-[11px] text-gray-600">
+                                <span className="font-semibold text-gray-700">{rem.vehicleInfo}</span>
+                                <span className="text-gray-400">•</span>
+                                <span className="font-mono text-gray-500">Target: {rem.dueDate}</span>
+                              </div>
+                              <p className="text-gray-700 text-[11px] leading-relaxed bg-white/70 p-2 rounded-md border border-rose-100">
+                                {rem.message}
+                              </p>
+                              {rem.message?.includes("Default preventive-maintenance rule") && (
+                                <span className="text-[10px] text-gray-400 font-medium italic block">
+                                  * Default preventive-maintenance rule (general guidance)
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })()}
+
+                {/* 2. Upcoming Maintenance */}
+                {(() => {
+                  const upcomingItems = reminders.filter(
+                    (r) => (r.status === "ACTIVE" || r.status === "DUE") && !r.isDue
+                  );
+                  if (upcomingItems.length === 0) return null;
+                  return (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                        <Clock className="w-3.5 h-3.5 text-gray-400" />
+                        <span>Upcoming Preventive Maintenance ({upcomingItems.length})</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                        {upcomingItems.map((rem) => (
+                          <div
+                            key={rem.reminderId}
+                            className="p-4 rounded-xl bg-white shadow-[0_2px_4px_rgba(0,0,0,0.04),0_8px_16px_rgba(0,0,0,0.08)] border border-gray-100 flex items-start gap-3.5 hover:shadow-md transition-all duration-200"
+                          >
+                            <div className="p-2.5 rounded-lg bg-blue-50 text-[#635bff] border border-blue-100 shrink-0">
+                              <Clock className="w-4 h-4" />
+                            </div>
+                            <div className="space-y-1.5 text-xs flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-bold text-[#0a2540]">{rem.reminderType}</span>
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+                                  Due: {rem.dueDate}
+                                </span>
+                              </div>
+                              <span className="text-gray-500 block text-[11px]">{rem.vehicleInfo}</span>
+                              <p className="text-gray-600 text-[11px] leading-relaxed">{rem.message}</p>
+                              {rem.message?.includes("Default preventive-maintenance rule") && (
+                                <span className="text-[10px] text-gray-400 font-medium italic block">
+                                  * Default preventive-maintenance rule (general guidance)
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>
@@ -993,7 +1135,7 @@ export function CustomerDashboard() {
       {/* MODAL 3: Book Appointment */}
       {showBookModal && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-white rounded-xl shadow-2xl p-6 sm:p-8 space-y-5 border border-gray-100">
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-2xl p-6 sm:p-8 space-y-5 border border-gray-100 text-[#0a2540]">
             <div className="flex items-center justify-between pb-2 border-b border-gray-100">
               <div className="flex items-center gap-2 text-[#0a2540] font-bold text-base">
                 <Calendar className="w-5 h-5 text-[#635bff]" />
@@ -1006,6 +1148,126 @@ export function CustomerDashboard() {
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {/* Smart Slot Suggestions */}
+            <div className="p-3.5 bg-gradient-to-br from-indigo-50/70 to-purple-50/50 rounded-xl border border-indigo-100/90 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-[#0a2540]">
+                  <Sparkles className="w-4 h-4 text-[#635bff]" />
+                  <span>Smart Slot Suggestions</span>
+                </div>
+                {isLoadingAvailability ? (
+                  <div className="flex items-center gap-1 text-[11px] text-gray-400 font-medium">
+                    <Loader2 className="w-3 h-3 animate-spin text-[#635bff]" />
+                    <span>Calculating slots...</span>
+                  </div>
+                ) : availabilityData?.workingHours ? (
+                  <span className="text-[10px] text-gray-500 font-mono">
+                    Mon–Sat {availabilityData.workingHours.open}–{availabilityData.workingHours.close}
+                  </span>
+                ) : null}
+              </div>
+
+              {availabilityData?.isClosed ? (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Workshop is closed on Sundays. Please select a Monday–Saturday date.</span>
+                </div>
+              ) : availabilityData?.recommendedSlots && availabilityData.recommendedSlots.length > 0 ? (
+                <div className="space-y-1.5">
+                  <p className="text-[11px] text-gray-500">
+                    Click a conflict-free recommended slot to auto-populate technician and appointment time:
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {availabilityData.recommendedSlots.map((slot, idx) => {
+                      const isSelected =
+                        bookForm.mechanicId === slot.mechanicId &&
+                        bookForm.scheduledStart.startsWith(slot.scheduledStart.slice(0, 16));
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => handleSelectSlot(slot)}
+                          className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all duration-200 ${
+                            isSelected
+                              ? "bg-[#635bff] text-white border-[#635bff] shadow-sm ring-2 ring-[#635bff]/30 scale-[1.02]"
+                              : "bg-white hover:bg-purple-50/80 text-[#0a2540] border-gray-200 hover:border-[#635bff]/40 shadow-xs"
+                          }`}
+                        >
+                          <Clock className={`w-3.5 h-3.5 ${isSelected ? "text-white" : "text-[#635bff]"}`} />
+                          <span>{slot.mechanicName.split(" ")[0]}</span>
+                          <span className={isSelected ? "text-white/60" : "text-gray-400"}>·</span>
+                          <span>{slot.displayDate === "Today" ? `Today ${slot.displayTime}` : `${slot.displayDate} ${slot.displayTime}`}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : !isLoadingAvailability ? (
+                <div className="p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-500">
+                  No open candidate slots found for this date. Choose another date or change service duration.
+                </div>
+              ) : null}
+            </div>
+
+            {/* Technician Availability Overview */}
+            {availabilityData?.technicians && availabilityData.technicians.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-[#0a2540]">Technicians</span>
+                  <span className="text-[10px] text-gray-400">Database schedule status</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {availabilityData.technicians.map((t) => {
+                    const isAvail = t.isAvailable;
+                    const isBusy = t.status.startsWith("Busy");
+                    const isClosed = t.status.includes("Closed");
+                    return (
+                      <div
+                        key={t.mechanicId}
+                        className={`p-2 rounded-lg border text-xs flex items-center justify-between gap-2 transition-colors ${
+                          isAvail
+                            ? "bg-emerald-50/40 border-emerald-200/80 text-[#0a2540]"
+                            : isBusy
+                            ? "bg-amber-50/40 border-amber-200/80 text-[#0a2540]"
+                            : isClosed
+                            ? "bg-gray-50 border-gray-200 text-gray-500"
+                            : "bg-red-50/40 border-red-200/80 text-[#0a2540]"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span
+                            className={`w-2 h-2 rounded-full shrink-0 ${
+                              isAvail
+                                ? "bg-emerald-500"
+                                : isBusy
+                                ? "bg-amber-500"
+                                : isClosed
+                                ? "bg-gray-400"
+                                : "bg-red-500"
+                            }`}
+                          />
+                          <span className="font-medium truncate">{t.name}</span>
+                        </div>
+                        <span
+                          className={`text-[10px] font-bold shrink-0 px-1.5 py-0.5 rounded border ${
+                            isAvail
+                              ? "bg-emerald-100/70 text-emerald-800 border-emerald-300/50"
+                              : isBusy
+                              ? "bg-amber-100/70 text-amber-800 border-amber-300/50"
+                              : isClosed
+                              ? "bg-gray-100 text-gray-600 border-gray-300/50"
+                              : "bg-red-100/70 text-red-800 border-red-300/50"
+                          }`}
+                        >
+                          {t.status}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleBookAppointment} className="space-y-4">
               <div className="space-y-1.5">
@@ -1030,11 +1292,15 @@ export function CustomerDashboard() {
                   onChange={(e) => setBookForm((p) => ({ ...p, mechanicId: Number(e.target.value) }))}
                   className="w-full p-2.5 rounded-lg bg-white border border-gray-300 text-xs text-[#0a2540] focus:outline-none focus:ring-2 focus:ring-[#635bff] shadow-sm font-medium"
                 >
-                  {mechanics.map((m) => (
-                    <option key={m.userId} value={m.userId}>
-                      {m.firstName} {m.lastName} (Tech #{m.userId})
-                    </option>
-                  ))}
+                  {mechanics.map((m) => {
+                    const techInfo = availabilityData?.technicians.find((t) => t.mechanicId === m.userId);
+                    const statusSuffix = techInfo ? ` — ${techInfo.status}` : "";
+                    return (
+                      <option key={m.userId} value={m.userId}>
+                        {m.firstName} {m.lastName} (Tech #{m.userId}){statusSuffix}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 
@@ -1045,14 +1311,18 @@ export function CustomerDashboard() {
                 id="appt-start"
                 required
                 value={bookForm.scheduledStart}
-                onChange={(e) => setBookForm((p) => ({ ...p, scheduledStart: e.target.value }))}
+                onChange={(e) => handleScheduledStartChange(e.target.value)}
               />
 
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-[#0a2540] block">Duration (Minutes)</label>
                 <select
                   value={bookForm.durationMinutes}
-                  onChange={(e) => setBookForm((p) => ({ ...p, durationMinutes: Number(e.target.value) }))}
+                  onChange={(e) => {
+                    const dur = Number(e.target.value);
+                    setBookForm((p) => ({ ...p, durationMinutes: dur }));
+                    fetchAvailability(undefined, dur);
+                  }}
                   className="w-full p-2.5 rounded-lg bg-white border border-gray-300 text-xs text-[#0a2540] focus:outline-none focus:ring-2 focus:ring-[#635bff] shadow-sm font-medium"
                 >
                   <option value={30}>30 Minutes (Quick Inspection)</option>
@@ -1071,7 +1341,7 @@ export function CustomerDashboard() {
                 onChange={(e) => setBookForm((p) => ({ ...p, serviceDescription: e.target.value }))}
               />
 
-              {/*Comment : Optional - lets the customer type the code (report id) from an AI Diagnosis they already discussed with the mechanic in chat, so this appointment gets linked back to that diagnosis. The backend verifies it's a real report and actually belongs to this customer before accepting it - typing the wrong number just gets a clear error, not a silent mismatch. */}
+              {/* Optional - AI Diagnosis Code linking */}
               <FormInput
                 label="AI Diagnosis Code (optional)"
                 name="reportId"
@@ -1282,34 +1552,53 @@ export function CustomerDashboard() {
               );
             })()}
 
-            {/*Comment : Restored - same as above. Active Maintenance Reminders — upcoming, not-yet-due maintenance flagged for this vehicle, so routine upkeep never gets forgotten. */}
+            {/* Active & Due Maintenance Reminders */}
             {(() => {
-              const activeReminders = reminders.filter(
-                (rem) => rem.vehicleId === healthVehicle.vehicleId && rem.status === "ACTIVE"
+              const vehicleReminders = reminders.filter(
+                (rem) => rem.vehicleId === healthVehicle.vehicleId && (rem.status === "ACTIVE" || rem.status === "DUE")
               );
               return (
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-500" />
-                    <h4 className="text-sm font-bold text-[#0a2540]">
-                      Active Maintenance Reminders ({activeReminders.length})
-                    </h4>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-500" />
+                      <h4 className="text-sm font-bold text-[#0a2540]">
+                        Maintenance Reminders & Alerts ({vehicleReminders.length})
+                      </h4>
+                    </div>
                   </div>
-                  {activeReminders.length === 0 ? (
+                  {vehicleReminders.length === 0 ? (
                     <div className="p-3 rounded-xl bg-gray-50 border border-gray-200 text-xs text-gray-500">
                       No active maintenance reminders for this vehicle.
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {activeReminders.map((rem) => (
-                        <div key={rem.reminderId} className="p-3 rounded-xl bg-gray-50 border border-gray-200 flex items-start gap-2 text-xs">
-                          <Clock className="w-3.5 h-3.5 text-amber-500 mt-0.5" />
-                          <div>
-                            <div className="flex items-center gap-2">
+                      {vehicleReminders.map((rem) => (
+                        <div
+                          key={rem.reminderId}
+                          className={`p-3 rounded-xl border flex items-start gap-2.5 text-xs ${
+                            rem.isDue
+                              ? "bg-rose-50/60 border-rose-200"
+                              : "bg-gray-50 border-gray-200"
+                          }`}
+                        >
+                          <div className={`mt-0.5 ${rem.isDue ? "text-rose-600" : "text-amber-500"}`}>
+                            {rem.isDue ? <AlertTriangle className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
+                          </div>
+                          <div className="flex-1 space-y-1">
+                            <div className="flex items-center justify-between gap-2">
                               <span className="font-bold text-[#0a2540]">{rem.reminderType}</span>
-                              <span className="text-[11px] text-gray-400 font-mono">Due: {rem.dueDate}</span>
+                              <span
+                                className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold ${
+                                  rem.isDue
+                                    ? "bg-rose-600 text-white"
+                                    : "bg-white border border-gray-200 text-gray-600"
+                                }`}
+                              >
+                                {rem.isDue ? (rem.dueReason === "MILEAGE_DUE" ? "MILEAGE DUE" : "PAST DUE") : `Due: ${rem.dueDate}`}
+                              </span>
                             </div>
-                            <p className="text-gray-600 text-[11px]">{rem.message}</p>
+                            <p className="text-gray-600 text-[11px] leading-relaxed">{rem.message}</p>
                           </div>
                         </div>
                       ))}
