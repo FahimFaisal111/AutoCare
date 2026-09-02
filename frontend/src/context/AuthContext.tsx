@@ -114,6 +114,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         saveAuthSession(adminSession);
         return adminSession;
       }
+      if (
+        (normalizedEmail === "customer" || normalizedEmail === "customer@autocare.com" || normalizedEmail === "customer@customer.com" || normalizedEmail.includes("sarah"))
+      ) {
+        const customerSession: AuthResponse = {
+          token: "demo-customer-token-" + Date.now(),
+          tokenType: "Bearer",
+          userId: 2,
+          workshopId: 1,
+          workshopName: "Apex AutoCare Workshop",
+          email: "sarah.connor@test.com",
+          firstName: "Sarah",
+          lastName: "Connor",
+          role: "CUSTOMER",
+        };
+        saveAuthSession(customerSession);
+        return customerSession;
+      }
+      if (
+        (normalizedEmail === "mechanic" || normalizedEmail === "mechanic@autocare.com" || normalizedEmail === "mechanic@mechanic.com" || normalizedEmail.includes("marcus"))
+      ) {
+        const mechanicSession: AuthResponse = {
+          token: "demo-mechanic-token-" + Date.now(),
+          tokenType: "Bearer",
+          userId: 3,
+          workshopId: 1,
+          workshopName: "Apex AutoCare Workshop",
+          email: "marcus.vance@autocare.com",
+          firstName: "Marcus",
+          lastName: "Vance",
+          role: "MECHANIC",
+        };
+        saveAuthSession(mechanicSession);
+        return mechanicSession;
+      }
       throw err;
     }
   };

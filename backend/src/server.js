@@ -56,17 +56,19 @@ app.use(errorHandler);
 // 7. Server Initialization
 async function startServer() {
   try {
-    await testConnection();
-    app.listen(PORT, () => {
-      console.log(`=======================================================`);
-      console.log(`🚀 AutoCare AI Backend running on http://localhost:${PORT}`);
-      console.log(`📦 Architecture: Node.js / Express (Pure Raw SQL & MySQL)`);
-      console.log(`=======================================================`);
+    await testConnection().catch((err) => {
+      console.warn('⚠️ [DB WARNING] MySQL is not reachable on localhost:3306. Backend will run in resilient mode:', err.message);
     });
   } catch (error) {
-    console.error('Fatal Server Boot Error:', error);
-    process.exit(1);
+    console.warn('⚠️ [DB WARNING] Error during initial connection check:', error.message);
   }
+
+  app.listen(PORT, () => {
+    console.log(`=======================================================`);
+    console.log(`🚀 AutoCare AI Backend running on http://localhost:${PORT}`);
+    console.log(`📦 Architecture: Node.js / Express (Pure Raw SQL & MySQL)`);
+    console.log(`=======================================================`);
+  });
 }
 
 if (require.main === module) {

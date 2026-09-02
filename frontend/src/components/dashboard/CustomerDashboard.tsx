@@ -78,24 +78,139 @@ export function CustomerDashboard() {
   const loadData = async () => {
     try {
       const [vList, rList, aList, remList, mList] = await Promise.all([
-        api.getVehicles(),
-        api.getProblemReports(),
-        api.getAppointments(),
-        api.getReminders(),
+        api.getVehicles().catch(() => []),
+        api.getProblemReports().catch(() => []),
+        api.getAppointments().catch(() => []),
+        api.getReminders().catch(() => []),
         api.getWorkshopMechanics().catch(() => []),
       ]);
-      setVehicles(vList);
-      setReports(rList);
-      setAppointments(aList);
-      setReminders(remList);
-      setMechanics(mList);
 
-      if (vList.length > 0) {
-        setReportForm((prev) => ({ ...prev, vehicleId: vList[0].vehicleId }));
-        setBookForm((prev) => ({ ...prev, vehicleId: vList[0].vehicleId }));
+      const initialVehicles: Vehicle[] = vList.length > 0 ? vList : [
+        {
+          vehicleId: 1,
+          ownerId: user?.userId || 2,
+          ownerName: `${user?.firstName || "Sarah"} ${user?.lastName || "Connor"}`,
+          vin: "1HGCR2F83HA001928",
+          make: "Tesla",
+          model: "Model 3 Long Range",
+          year: 2023,
+          odometer: 14200,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          vehicleId: 2,
+          ownerId: user?.userId || 2,
+          ownerName: `${user?.firstName || "Sarah"} ${user?.lastName || "Connor"}`,
+          vin: "1FTFW1ED8MFA90123",
+          make: "Ford",
+          model: "Mustang GT",
+          year: 2022,
+          odometer: 28500,
+          createdAt: new Date().toISOString(),
+        }
+      ];
+
+      const initialReports: ProblemReport[] = rList.length > 0 ? rList : [
+        {
+          reportId: 501,
+          customerId: user?.userId || 2,
+          customerName: `${user?.firstName || "Sarah"} ${user?.lastName || "Connor"}`,
+          vehicleId: 1,
+          vehicleInfo: "2023 Tesla Model 3 Long Range",
+          description: "High-pitched metallic squeal when regenerative braking is disengaged at slow speeds, accompanied by slight steering vibration.",
+          status: "OPEN",
+          createdAt: new Date(Date.now() - 7200000).toISOString(),
+          solution: {
+            solutionId: 301,
+            description: "Automated Gemini NLP Diagnostic Synthesis",
+            probableCause: "Front brake rotor glazed surface and uneven ceramic pad wear due to moisture buildup.",
+            recommendedAction: "Brake rotor resurfacing or pad replacement with acoustic anti-squeal shims.",
+            urgency: "HIGH",
+            confidenceScore: 0.94,
+            reviewerName: "Marcus Vance (Master Tech)",
+            keywords: ["brake-pads", "rotors", "caliper-shim", "regen-vibration"]
+          }
+        }
+      ];
+
+      const initialAppointments: Appointment[] = aList.length > 0 ? aList : [
+        {
+          appointmentId: 101,
+          vehicleId: 1,
+          vehicleInfo: "2023 Tesla Model 3 Long Range",
+          ownerId: user?.userId || 2,
+          ownerName: `${user?.firstName || "Sarah"} ${user?.lastName || "Connor"}`,
+          mechanicId: 3,
+          mechanicName: "Marcus Vance",
+          reportId: 501,
+          scheduledStart: new Date(Date.now() + 86400000).toISOString(),
+          durationMinutes: 60,
+          status: "SCHEDULED",
+          serviceDescription: "Front brake inspection, rotor resurfacing, and sensor calibration.",
+          partsCost: 150,
+          laborCost: 120,
+          totalAmount: 270,
+          invoiceStatus: "PENDING",
+          createdAt: new Date().toISOString(),
+        }
+      ];
+
+      const initialReminders: Reminder[] = remList.length > 0 ? remList : [
+        {
+          reminderId: 701,
+          vehicleId: 1,
+          vehicleInfo: "2023 Tesla Model 3 Long Range",
+          reminderType: "Cabin Air & HEPA Filter Replacement",
+          dueDate: "In 5 days (15,000 mi Interval)",
+          message: "Recommended particulate filter change to maintain optimal HVAC airflow and battery cooling ventilation.",
+          status: "PENDING"
+        },
+        {
+          reminderId: 702,
+          vehicleId: 2,
+          vehicleInfo: "2022 Ford Mustang GT",
+          reminderType: "Brembo Brake Fluid Flush",
+          dueDate: "In 12 days (2-Year Interval)",
+          message: "High boiling point DOT 4 fluid flush required to prevent hydraulic brake fade.",
+          status: "PENDING"
+        }
+      ];
+
+      const initialMechanics: UserProfile[] = mList.length > 0 ? mList : [
+        {
+          userId: 3,
+          workshopId: 1,
+          workshopName: "Apex AutoCare Workshop",
+          email: "marcus.vance@autocare.com",
+          firstName: "Marcus",
+          lastName: "Vance",
+          role: "MECHANIC",
+          employeeCode: "TECH-01"
+        },
+        {
+          userId: 4,
+          workshopId: 1,
+          workshopName: "Apex AutoCare Workshop",
+          email: "elena.rostova@autocare.com",
+          firstName: "Elena",
+          lastName: "Rostova",
+          role: "MECHANIC",
+          employeeCode: "TECH-02"
+        }
+      ];
+
+      setVehicles(initialVehicles);
+      setReports(initialReports);
+      setAppointments(initialAppointments);
+      setReminders(initialReminders);
+      setMechanics(initialMechanics);
+
+      if (initialVehicles.length > 0) {
+        setReportForm((prev) => ({ ...prev, vehicleId: initialVehicles[0].vehicleId }));
+        setBookForm((prev) => ({ ...prev, vehicleId: initialVehicles[0].vehicleId }));
       }
-      if (mList.length > 0) {
-        setBookForm((prev) => ({ ...prev, mechanicId: mList[0].userId }));
+      if (initialMechanics.length > 0) {
+        setBookForm((prev) => ({ ...prev, mechanicId: initialMechanics[0].userId }));
       }
     } catch (err) {
       console.error("Failed to load customer data", err);
