@@ -43,6 +43,17 @@ class AppointmentController {
     }
   }
 
+  async updateInvoiceStatus(req, res, next) {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const { status } = req.body;
+      const result = await appointmentService.updateInvoiceStatus(id, status, req.user);
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+
   async getTechnicianAvailability(req, res, next) {
     try {
       const { date, durationMinutes, targetDateTime } = req.query;

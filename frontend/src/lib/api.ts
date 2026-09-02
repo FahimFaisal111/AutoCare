@@ -449,6 +449,13 @@ class ApiClient {
     });
   }
 
+  async updateInvoiceStatus(id: number, status: "PENDING" | "PAID"): Promise<Appointment> {
+    return this.request<Appointment>(`/api/appointments/${id}/invoice/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    });
+  }
+
   /*Comment : Hero Feature 7 - fetches one appointment's message thread. This is also what the chat modal's background poll calls repeatedly while it's open. */
   async getMessages(appointmentId: number): Promise<Message[]> {
     return this.request<Message[]>(`/api/appointments/${appointmentId}/messages`, {

@@ -43,21 +43,40 @@ serviceEvents.onServiceCompleted(async (event) => {
 
 class AppointmentService {
   /**
-   * Helper: Calculate end time based on start time string (ISO / DATETIME) and duration in minutes
+   * Helper: Calculate end time based on start time string (ISO / DATETIME) and duration in minutes.
+   * Preserves local wall-clock time without UTC timezone shift.
    */
   calculateEndTime(scheduledStart, durationMinutes) {
-    const start = new Date(scheduledStart);
+    const start = new Date(typeof scheduledStart === 'string' ? scheduledStart.replace(' ', 'T') : scheduledStart);
     const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
-    // Format to YYYY-MM-DD HH:mm:ss for MySQL comparison
-    return end.toISOString().slice(0, 19).replace('T', ' ');
+    const Y = end.getFullYear();
+    const M = String(end.getMonth() + 1).padStart(2, '0');
+    const D = String(end.getDate()).padStart(2, '0');
+    const h = String(end.getHours()).padStart(2, '0');
+    const m = String(end.getMinutes()).padStart(2, '0');
+    const s = String(end.getSeconds()).padStart(2, '0');
+    return `${Y}-${M}-${D} ${h}:${m}:${s}`;
   }
 
   /**
-   * Helper: Format Date / ISO to MySQL DATETIME string
+   * Helper: Format Date / ISO to MySQL DATETIME string.
+   * Preserves local wall-clock time without converting through toISOString() UTC offset.
    */
   formatDateTime(dateTimeStr) {
+    if (typeof dateTimeStr === 'string') {
+      const clean = dateTimeStr.replace('T', ' ').trim();
+      if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(clean)) {
+        return clean.length === 16 ? `${clean}:00` : clean.slice(0, 19);
+      }
+    }
     const d = new Date(dateTimeStr);
-    return d.toISOString().slice(0, 19).replace('T', ' ');
+    const Y = d.getFullYear();
+    const M = String(d.getMonth() + 1).padStart(2, '0');
+    const D = String(d.getDate()).padStart(2, '0');
+    const h = String(d.getHours()).padStart(2, '0');
+    const m = String(d.getMinutes()).padStart(2, '0');
+    const s = String(d.getSeconds()).padStart(2, '0');
+    return `${Y}-${M}-${D} ${h}:${m}:${s}`;
   }
 
   /**
@@ -252,6 +271,36 @@ class AppointmentService {
       const updated = await appointmentRepo.findById(conn, appointmentId);
       return this.formatAppointmentResponse(updated);
     });
+  }
+
+  /**
+   * Update invoice status for an appointment (e.g. mark as PAID).
+   */
+  async updateInvoiceStatus(appointmentId, status, userPrincipal) {
+    if (!status || !['PENDING', 'PAID'].includes(status.toUpperCase())) {
+      throw new BadRequestError("Invalid invoice status. Must be 'PENDING' or 'PAID'.");
+    }
+    const normalizedStatus = status.toUpperCase();
+
+    const appointment = await appointmentRepo.findById(null, appointmentId);
+    if (!appointment) {
+      throw new NotFoundError('Appointment not found');
+    }
+
+    // Tenant boundary check
+    if (appointment.workshopId !== userPrincipal.workshopId) {
+      throw new ForbiddenError('You can only manage invoices within your workshop.');
+    }
+
+    // Role check
+    if (userPrincipal.role === 'CUSTOMER' && appointment.ownerId !== userPrincipal.userId) {
+      throw new ForbiddenError('You can only pay for your own vehicle appointments.');
+    }
+
+    await invoiceRepo.updateStatus(null, appointmentId, normalizedStatus);
+
+    const updated = await appointmentRepo.findById(null, appointmentId);
+    return this.formatAppointmentResponse(updated);
   }
 
   /**

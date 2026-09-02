@@ -56,6 +56,20 @@ class InvoiceRepository {
     const [rows] = await db.query(sql, [workshopId]);
     return parseFloat(rows[0]?.totalRevenue || 0);
   }
+
+  /**
+   * Update invoice status by appointment ID.
+   */
+  async updateStatus(executor, appointmentId, status) {
+    const db = executor || pool;
+    const sql = `
+      UPDATE invoice
+      SET status = ?
+      WHERE appointment_id = ?;
+    `;
+    const [result] = await db.query(sql, [status, appointmentId]);
+    return result.affectedRows > 0;
+  }
 }
 
 module.exports = new InvoiceRepository();

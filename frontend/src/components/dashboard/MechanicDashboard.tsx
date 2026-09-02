@@ -167,6 +167,29 @@ export function MechanicDashboard() {
     }
   };
 
+  const handleMarkInvoicePaid = async (appointmentId: number) => {
+    setIsSubmitting(true);
+    setActionError("");
+    setActionSuccess("");
+
+    try {
+      await api.updateInvoiceStatus(appointmentId, "PAID");
+      setActionSuccess(`Invoice for appointment #${appointmentId} marked as PAID.`);
+      setAppointments((prev) =>
+        prev.map((a) => (a.appointmentId === appointmentId ? { ...a, invoiceStatus: "PAID" } : a))
+      );
+      if (selectedInvoiceAppointment?.appointmentId === appointmentId) {
+        setSelectedInvoiceAppointment((prev) => (prev ? { ...prev, invoiceStatus: "PAID" } : null));
+      }
+      await loadData();
+    } catch (err: unknown) {
+      const error = err as ApiError;
+      setActionError(error.message || "Failed to mark invoice as paid.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleVerifySolution = async (reportId: number) => {
     setIsSubmitting(true);
     setActionError("");
@@ -718,6 +741,7 @@ export function MechanicDashboard() {
           appointment={selectedInvoiceAppointment}
           workshopName={user?.workshopName}
           onClose={() => setSelectedInvoiceAppointment(null)}
+          onMarkPaid={handleMarkInvoicePaid}
         />
       )}
     </div>

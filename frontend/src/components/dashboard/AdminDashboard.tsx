@@ -44,12 +44,18 @@ export function AdminDashboard() {
   const [searchFilter, setSearchFilter] = useState("");
   const [selectedInvoiceAppointment, setSelectedInvoiceAppointment] = useState<Appointment | null>(null);
 
-  const handleMarkInvoicePaid = (appointmentId: number) => {
-    setAppointments((prev) =>
-      prev.map((a) => (a.appointmentId === appointmentId ? { ...a, invoiceStatus: "PAID" } : a))
-    );
-    if (selectedInvoiceAppointment?.appointmentId === appointmentId) {
-      setSelectedInvoiceAppointment((prev) => (prev ? { ...prev, invoiceStatus: "PAID" } : null));
+  const handleMarkInvoicePaid = async (appointmentId: number) => {
+    try {
+      await api.updateInvoiceStatus(appointmentId, "PAID");
+      setAppointments((prev) =>
+        prev.map((a) => (a.appointmentId === appointmentId ? { ...a, invoiceStatus: "PAID" } : a))
+      );
+      if (selectedInvoiceAppointment?.appointmentId === appointmentId) {
+        setSelectedInvoiceAppointment((prev) => (prev ? { ...prev, invoiceStatus: "PAID" } : null));
+      }
+      await loadData();
+    } catch (err) {
+      console.error("Failed to mark invoice as paid", err);
     }
   };
 

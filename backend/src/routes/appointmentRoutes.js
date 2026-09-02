@@ -17,6 +17,7 @@ router.post('/', (req, res, next) => appointmentController.createAppointment(req
 router.get('/', (req, res, next) => appointmentController.getAppointments(req, res, next));
 router.get('/:id', (req, res, next) => appointmentController.getAppointmentById(req, res, next));
 router.patch('/:id/status', requireRole('MECHANIC', 'ADMIN'), (req, res, next) => appointmentController.updateAppointmentStatus(req, res, next));
+router.patch('/:id/invoice/status', (req, res, next) => appointmentController.updateInvoiceStatus(req, res, next));
 
 /*Comment : Registered BEFORE the /:id routes on purpose - it's a literal two-segment path (/messages/latest), not an appointment id, and putting explicit routes ahead of param routes avoids any ambiguity about match order as this file grows. */
 router.get('/messages/latest', (req, res, next) => conversationController.getLatestActivity(req, res, next));

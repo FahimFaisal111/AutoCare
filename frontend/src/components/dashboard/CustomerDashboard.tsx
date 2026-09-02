@@ -451,6 +451,41 @@ export function CustomerDashboard() {
     }
   };
 
+  const handleMarkInvoicePaid = async (appointmentId: number) => {
+    try {
+      await api.updateInvoiceStatus(appointmentId, "PAID");
+      await loadData();
+      if (selectedInvoiceAppointment?.appointmentId === appointmentId) {
+        setSelectedInvoiceAppointment((prev) => (prev ? { ...prev, invoiceStatus: "PAID" } : null));
+      }
+    } catch (err) {
+      console.error("Failed to pay invoice", err);
+    }
+  };
+
+  const handleBookFromReminder = async (rem: Reminder) => {
+    try {
+      // 1. Mark reminder as COMPLETED so it and its layout disappear from active alerts
+      await api.updateReminderStatus(rem.reminderId, "COMPLETED");
+      setReminders((prev) => prev.filter((r) => r.reminderId !== rem.reminderId));
+
+      // 2. Pre-fill the booking form with this vehicle and maintenance details
+      setBookForm((prev) => ({
+        ...prev,
+        vehicleId: rem.vehicleId,
+        serviceDescription: `Maintenance: ${rem.reminderType} - ${rem.message || "Scheduled preventive maintenance."}`,
+      }));
+
+      // 3. Open the booking modal and fetch availability
+      setShowBookModal(true);
+      fetchAvailability("", bookForm.durationMinutes);
+      setActionSuccess(`Urgent reminder for ${rem.reminderType} cleared. Please pick a slot to complete booking.`);
+    } catch (err: unknown) {
+      const error = err as ApiError;
+      setActionError(error.message || "Failed to process reminder.");
+    }
+  };
+
   const handleCreateReport = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -970,6 +1005,16 @@ export function CustomerDashboard() {
                                   * Default preventive-maintenance rule (general guidance)
                                 </span>
                               )}
+                              <div className="pt-2 flex items-center justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => handleBookFromReminder(rem)}
+                                  className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-[0_2px_4px_rgba(225,29,72,0.25)] hover:-translate-y-0.5 transition-all duration-200 active:scale-95"
+                                >
+                                  <Calendar className="w-3.5 h-3.5" />
+                                  <span>Book Appointment</span>
+                                </button>
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -1013,6 +1058,16 @@ export function CustomerDashboard() {
                                   * Default preventive-maintenance rule (general guidance)
                                 </span>
                               )}
+                              <div className="pt-2 flex items-center justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => handleBookFromReminder(rem)}
+                                  className="px-3 py-1.5 rounded-lg bg-[#635bff] hover:bg-[#5349e0] text-white font-semibold text-xs flex items-center gap-1.5 shadow-[0_2px_4px_rgba(99,91,255,0.2)] hover:-translate-y-0.5 transition-all duration-200 active:scale-95"
+                                >
+                                  <Calendar className="w-3.5 h-3.5" />
+                                  <span>Book Appointment</span>
+                                </button>
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -1812,6 +1867,7 @@ export function CustomerDashboard() {
           appointment={selectedInvoiceAppointment}
           workshopName={user?.workshopName}
           onClose={() => setSelectedInvoiceAppointment(null)}
+          onMarkPaid={handleMarkInvoicePaid}
         />
       )}
     </div>
