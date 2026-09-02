@@ -39,9 +39,19 @@ export function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(true);
 
   const [copiedCode, setCopiedCode] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "fleet" | "staff">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "invoices" | "fleet" | "staff">("overview");
+  const [invoiceFilter, setInvoiceFilter] = useState<"ALL" | "PENDING" | "PAID">("ALL");
   const [searchFilter, setSearchFilter] = useState("");
   const [selectedInvoiceAppointment, setSelectedInvoiceAppointment] = useState<Appointment | null>(null);
+
+  const handleMarkInvoicePaid = (appointmentId: number) => {
+    setAppointments((prev) =>
+      prev.map((a) => (a.appointmentId === appointmentId ? { ...a, invoiceStatus: "PAID" } : a))
+    );
+    if (selectedInvoiceAppointment?.appointmentId === appointmentId) {
+      setSelectedInvoiceAppointment((prev) => (prev ? { ...prev, invoiceStatus: "PAID" } : null));
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -337,7 +347,18 @@ export function AdminDashboard() {
             }`}
           >
             <Calendar className="w-3.5 h-3.5" />
-            <span>Workshop Schedule & Work Orders ({appointments.length})</span>
+            <span>Schedule &amp; Work Orders ({appointments.length})</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("invoices")}
+            className={`px-4 py-2.5 rounded-lg text-xs font-semibold transition-all duration-[300ms] ease-out flex items-center gap-2 ${
+              activeTab === "invoices"
+                ? "bg-[#635bff] text-white shadow-[0_2px_4px_rgba(99,91,255,0.2),0_4px_8px_rgba(99,91,255,0.2)] hover:-translate-y-0.5"
+                : "bg-white border border-gray-200 text-[#0a2540] hover:bg-gray-50 hover:-translate-y-0.5 shadow-sm"
+            }`}
+          >
+            <DollarSign className="w-3.5 h-3.5" />
+            <span>Invoices &amp; Billing Ledger ({appointments.length})</span>
           </button>
           <button
             onClick={() => setActiveTab("fleet")}
@@ -363,12 +384,12 @@ export function AdminDashboard() {
           </button>
         </div>
 
-        {activeTab === "overview" && (
+        {(activeTab === "overview" || activeTab === "invoices") && (
           <div className="relative flex items-center">
             <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 pointer-events-none" />
             <input
               type="text"
-              placeholder="Search work orders..."
+              placeholder={activeTab === "invoices" ? "Search invoices..." : "Search work orders..."}
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
               className="pl-8 pr-3 py-2 text-xs bg-white border border-gray-300 rounded-lg text-[#0a2540] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#635bff] focus:border-transparent transition-all w-48 shadow-sm"
@@ -461,6 +482,173 @@ export function AdminDashboard() {
         </div>
       )}
 
+      {/* Tab: Invoices & Billing Ledger (Feature 8) */}
+      {activeTab === "invoices" && (
+        <div className="space-y-4">
+          {/* Financial Summary & Filter Controls */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-white border border-gray-200 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="text-xs space-y-0.5">
+                <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px] block">Settled (Paid)</span>
+                <span className="text-sm font-bold text-emerald-600 font-mono">
+                  ${appointments
+                    .filter((a) => a.invoiceStatus === "PAID" || (!a.invoiceStatus && a.status === "COMPLETED"))
+                    .reduce((sum, a) => sum + (a.totalAmount || 0), 0)
+                    .toFixed(2)}
+                </span>
+              </div>
+              <span className="text-gray-300">|</span>
+              <div className="text-xs space-y-0.5">
+                <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px] block">Pending Collection</span>
+                <span className="text-sm font-bold text-amber-600 font-mono">
+                  ${appointments
+                    .filter((a) => a.invoiceStatus !== "PAID" && (a.invoiceStatus === "PENDING" || a.status !== "COMPLETED"))
+                    .reduce((sum, a) => sum + (a.totalAmount || 0), 0)
+                    .toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 self-start sm:self-auto">
+              <button
+                onClick={() => setInvoiceFilter("ALL")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  invoiceFilter === "ALL"
+                    ? "bg-[#635bff] text-white shadow-sm"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                All ({appointments.length})
+              </button>
+              <button
+                onClick={() => setInvoiceFilter("PENDING")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  invoiceFilter === "PENDING"
+                    ? "bg-amber-500 text-white shadow-sm"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                Pending ({appointments.filter((a) => a.invoiceStatus !== "PAID" && (a.invoiceStatus === "PENDING" || a.status !== "COMPLETED")).length})
+              </button>
+              <button
+                onClick={() => setInvoiceFilter("PAID")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  invoiceFilter === "PAID"
+                    ? "bg-emerald-600 text-white shadow-sm"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                Paid ({appointments.filter((a) => a.invoiceStatus === "PAID" || (!a.invoiceStatus && a.status === "COMPLETED")).length})
+              </button>
+            </div>
+          </div>
+
+          {/* Invoices Table */}
+          {(() => {
+            const filteredInvoices = appointments
+              .filter((a) => {
+                const isPaid = a.invoiceStatus === "PAID" || (!a.invoiceStatus && a.status === "COMPLETED");
+                if (invoiceFilter === "PAID") return isPaid;
+                if (invoiceFilter === "PENDING") return !isPaid;
+                return true;
+              })
+              .filter(
+                (a) =>
+                  a.vehicleInfo.toLowerCase().includes(searchFilter.toLowerCase()) ||
+                  a.ownerName.toLowerCase().includes(searchFilter.toLowerCase()) ||
+                  a.mechanicName.toLowerCase().includes(searchFilter.toLowerCase()) ||
+                  `inv-${String(a.appointmentId).padStart(6, "0")}`.toLowerCase().includes(searchFilter.toLowerCase())
+              );
+
+            if (filteredInvoices.length === 0) {
+              return (
+                <div className="p-12 text-center rounded-xl bg-white border border-gray-200 shadow-sm text-xs text-gray-500">
+                  No invoices found matching your criteria.
+                </div>
+              );
+            }
+
+            return (
+              <div className="overflow-x-auto rounded-xl bg-white border border-gray-200 shadow-[0_2px_4px_rgba(0,0,0,0.04),0_8px_16px_rgba(0,0,0,0.08)]">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-gray-50/80 text-[#0a2540] border-b border-gray-200 font-bold">
+                    <tr>
+                      <th className="p-4">Invoice #</th>
+                      <th className="p-4">Billed Customer</th>
+                      <th className="p-4">Vehicle</th>
+                      <th className="p-4">Technician</th>
+                      <th className="p-4">Issued Date</th>
+                      <th className="p-4">Parts &amp; Labor</th>
+                      <th className="p-4">Total Amount</th>
+                      <th className="p-4">Status</th>
+                      <th className="p-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filteredInvoices.map((a) => {
+                      const isPaid = a.invoiceStatus === "PAID" || (!a.invoiceStatus && a.status === "COMPLETED");
+                      const invNumber = `INV-${String(a.appointmentId).padStart(6, "0")}`;
+                      return (
+                        <tr key={a.appointmentId} className="hover:bg-gray-50/60 transition-colors">
+                          <td className="p-4 font-mono font-bold text-[#635bff]">{invNumber}</td>
+                          <td className="p-4 font-semibold text-[#0a2540]">
+                            {a.ownerName}
+                            <span className="block text-[10px] text-gray-400 font-mono">ID #{a.ownerId}</span>
+                          </td>
+                          <td className="p-4 font-bold text-[#0a2540]">{a.vehicleInfo}</td>
+                          <td className="p-4 text-gray-600">{a.mechanicName}</td>
+                          <td className="p-4 text-gray-500 font-mono">
+                            {new Date(a.scheduledStart).toLocaleDateString()}
+                          </td>
+                          <td className="p-4 font-mono text-gray-500">
+                            ${a.partsCost.toFixed(2)} + ${a.laborCost.toFixed(2)}
+                          </td>
+                          <td className="p-4 font-mono font-bold text-base text-emerald-600">
+                            ${a.totalAmount.toFixed(2)}
+                          </td>
+                          <td className="p-4">
+                            <span
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                                isPaid
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : "bg-amber-50 text-amber-700 border-amber-200"
+                              }`}
+                            >
+                              {isPaid ? "PAID" : "PENDING"}
+                            </span>
+                          </td>
+                          <td className="p-4 text-right">
+                            <div className="inline-flex items-center justify-end gap-2">
+                              {!isPaid && (
+                                <button
+                                  onClick={() => handleMarkInvoicePaid(a.appointmentId)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 text-xs font-semibold transition-all active:scale-95 shadow-xs"
+                                  title="Settle and mark invoice as PAID"
+                                >
+                                  Mark as PAID
+                                </button>
+                              )}
+                              <button
+                                onClick={() => setSelectedInvoiceAppointment(a)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#635bff]/10 hover:bg-[#635bff]/20 text-[#635bff] border border-[#635bff]/30 text-xs font-semibold transition-all active:scale-95 shadow-sm"
+                                title="View and print tax invoice receipt"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                                <span>Invoice</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       {/* Tab 2: Vehicle Fleet */}
       {activeTab === "fleet" && (
         <div className="space-y-4">
@@ -520,6 +708,7 @@ export function AdminDashboard() {
           workshopName={stats?.workshopName}
           workshopAddress={stats?.workshopAddress}
           onClose={() => setSelectedInvoiceAppointment(null)}
+          onMarkPaid={handleMarkInvoicePaid}
         />
       )}
     </div>

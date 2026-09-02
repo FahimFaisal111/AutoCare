@@ -19,6 +19,7 @@ interface InvoiceModalProps {
   workshopName?: string;
   workshopAddress?: string;
   onClose: () => void;
+  onMarkPaid?: (appointmentId: number) => void;
 }
 
 export function InvoiceModal({
@@ -26,6 +27,7 @@ export function InvoiceModal({
   workshopName = "Apex AutoCare Workshop",
   workshopAddress = "742 Evergreen Terrace, Springfield",
   onClose,
+  onMarkPaid,
 }: InvoiceModalProps) {
   if (!appointment) return null;
 
@@ -47,9 +49,18 @@ export function InvoiceModal({
         <div className="p-4 sm:p-6 bg-zinc-950 border-b border-zinc-800 flex items-center justify-between print:hidden">
           <div className="flex items-center gap-2 text-zinc-100 font-bold text-base">
             <FileText className="w-5 h-5 text-sky-400" />
-            <span>Tax Invoice & Service Receipt</span>
+            <span>Tax Invoice &amp; Service Receipt</span>
           </div>
           <div className="flex items-center gap-2">
+            {onMarkPaid && appointment.invoiceStatus !== "PAID" && (
+              <button
+                onClick={() => onMarkPaid(appointment.appointmentId)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs shadow transition-all active:scale-95"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Mark as PAID</span>
+              </button>
+            )}
             <button
               onClick={handlePrint}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-zinc-950 font-bold text-xs shadow transition-all active:scale-95"
