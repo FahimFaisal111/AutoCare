@@ -1,14 +1,10 @@
-/**
- * AutoCare AI - Problem Report & AI Diagnostic Service
- * Synthesizes root-cause analysis via Google Gemini API with static procedural fallback
- */
-
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const openRouterService = require('./openRouterService');
 const { withTransaction } = require('../config/db');
 const vehicleRepo = require('../repositories/vehicleRepo');
 const problemReportRepo = require('../repositories/problemReportRepo');
 const solutionRepo = require('../repositories/solutionRepo');
 const reminderRepo = require('../repositories/reminderRepo');
+const appointmentRepo = require('../repositories/appointmentRepo');
 const {
   BadRequestError,
   NotFoundError,
@@ -66,7 +62,7 @@ class ProblemReportService {
     }
 
     return {
-      description: `AI Diagnostic Synthesis for ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+      overallSummary: `AI Diagnostic Synthesis for ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
       probableCause,
       recommendedAction,
       urgency,
@@ -76,47 +72,18 @@ class ProblemReportService {
   }
 
   /**
-   * Synthesizes AI Diagnostic Solution using Google Gemini API with procedural fallback.
+   * Synthesizes AI Diagnostic Solution using OpenRouter API with procedural fallback.
    */
-  async synthesizeDiagnosis(vehicle, description) {
-    const apiKey = process.env.GEMINI_API_KEY;
+  async synthesizeDiagnosis(context, vehicle, description) {
+    const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
       return this.generateProceduralSynthesis(vehicle, description);
     }
 
     try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-
-      const prompt = `
-You are an expert master automotive diagnostic AI. Analyze the following vehicle symptom report:
-Vehicle: ${vehicle.year} ${vehicle.make} ${vehicle.model} (VIN: ${vehicle.vin}, Odometer: ${vehicle.odometer} miles)
-Symptom Description: "${description}"
-
-Respond with ONLY a raw valid JSON object with NO markdown formatting or code fences. Format:
-{
-  "probableCause": "Precise mechanical/electrical root cause hypothesis",
-  "recommendedAction": "Actionable technical repair and diagnostic steps",
-  "urgency": "HIGH" | "MEDIUM" | "LOW",
-  "confidenceScore": 0.92,
-  "keywords": ["keyword 1", "keyword 2", "keyword 3", "keyword 4"]
-}
-`;
-      const result = await model.generateContent(prompt);
-      const text = result.response.text().trim();
-      const cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
-      const parsed = JSON.parse(cleaned);
-
-      return {
-        description: `AI Diagnostic Synthesis for ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-        probableCause: parsed.probableCause || 'Mechanical inspection required.',
-        recommendedAction: parsed.recommendedAction || 'Perform standard multi-point inspection.',
-        urgency: ['HIGH', 'MEDIUM', 'LOW'].includes(parsed.urgency?.toUpperCase()) ? parsed.urgency.toUpperCase() : 'MEDIUM',
-        confidenceScore: typeof parsed.confidenceScore === 'number' ? parsed.confidenceScore : 0.90,
-        keywords: Array.isArray(parsed.keywords) ? parsed.keywords.map(k => String(k).toLowerCase().trim()) : ['diagnostic inspection']
-      };
+      return await openRouterService.generateDiagnosis(context);
     } catch (err) {
-      console.warn('[Gemini AI] AI call failed or timed out, using static fallback:', err.message);
+      console.warn('[OpenRouter AI] Diagnostic generation failed, utilizing static procedural fallback:', err.message);
       return this.generateProceduralSynthesis(vehicle, description);
     }
   }
@@ -142,8 +109,47 @@ Respond with ONLY a raw valid JSON object with NO markdown formatting or code fe
       throw new ForbiddenError('You can only report issues for your own vehicles.');
     }
 
+    // Retrieve real vehicle history and maintenance context
+    const [serviceHistory, previousReports, activeReminders] = await Promise.all([
+      appointmentRepo.findCompletedByVehicleId(null, vehicle.vehicleId),
+      problemReportRepo.findAllByVehicleId(null, vehicle.vehicleId),
+      reminderRepo.findActiveByVehicleId(null, vehicle.vehicleId)
+    ]);
+
+    const diagnosticContext = {
+      vehicle: {
+        year: vehicle.year,
+        make: vehicle.make,
+        model: vehicle.model,
+        odometer: vehicle.odometer,
+        vin: vehicle.vin
+      },
+      currentProblem: {
+        description: description.trim(),
+        createdAt: new Date().toISOString()
+      },
+      serviceHistory: serviceHistory.map(s => ({
+        scheduledStart: s.scheduledStart,
+        serviceDescription: s.serviceDescription,
+        status: s.status
+      })),
+      previousReports: previousReports.map(r => ({
+        reportId: r.reportId,
+        description: r.description,
+        probableCause: r.probableCause,
+        recommendedAction: r.recommendedAction,
+        urgency: r.urgency,
+        createdAt: r.createdAt
+      })),
+      activeReminders: activeReminders.map(rem => ({
+        reminderType: rem.reminderType,
+        dueDate: rem.dueDate,
+        message: rem.message
+      }))
+    };
+
     // Generate AI Diagnostic Synthesis
-    const diagnosis = await this.synthesizeDiagnosis(vehicle, description.trim());
+    const diagnosis = await this.synthesizeDiagnosis(diagnosticContext, vehicle, description.trim());
 
     return withTransaction(async (conn) => {
       // 1. Create problem report row
@@ -157,7 +163,7 @@ Respond with ONLY a raw valid JSON object with NO markdown formatting or code fe
       // 2. Create solution report row
       const solutionId = await solutionRepo.createSolutionReport(conn, {
         reportId,
-        description: diagnosis.description,
+        description: diagnosis.overallSummary || `AI Diagnostic Synthesis for ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
         probableCause: diagnosis.probableCause,
         recommendedAction: diagnosis.recommendedAction,
         urgency: diagnosis.urgency,

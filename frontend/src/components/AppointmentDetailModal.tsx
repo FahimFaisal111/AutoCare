@@ -3,7 +3,7 @@
 import React from "react";
 import { Appointment, ProblemReport } from "@/lib/api";
 import { parseServiceDescription } from "@/lib/serviceLog";
-import { Wrench, FileText, MessageSquareText, Stethoscope } from "lucide-react";
+import { Wrench, FileText, MessageSquareText, Stethoscope, AlertTriangle } from "lucide-react";
 
 interface AppointmentDetailModalProps {
   appointment: Appointment;
@@ -77,6 +77,12 @@ export function AppointmentDetailModal({ appointment, problemReport, onClose }: 
                     <span className="text-zinc-500 font-semibold block">Recommended Action:</span>
                     <p className="text-zinc-300">{problemReport.solution.recommendedAction}</p>
                   </div>
+                </div>
+                <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] leading-relaxed">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                  <span>
+                    Please contact Mechanic if you are not experienced, Ai generated responses are merely suggestions only, perform necessary actions only if you are an expert
+                  </span>
                 </div>
                 <span className="text-[10px] text-zinc-500 block">
                   Confidence: {Math.round(problemReport.solution.confidenceScore * 100)}%

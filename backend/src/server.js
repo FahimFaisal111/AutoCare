@@ -64,11 +64,18 @@ app.use((req, res, next) => {
 app.use(errorHandler);
 
 // 7. Server Initialization
+const reminderJob = require('./jobs/reminderJob');
+
 async function startServer() {
   try {
     await testConnection().catch((err) => {
       console.warn('⚠️ [DB WARNING] MySQL is not reachable on localhost:3306. Backend will run in resilient mode:', err.message);
     });
+    try {
+      reminderJob.start();
+    } catch (jobErr) {
+      console.warn('⚠️ [REMINDER JOB] Could not start reminder job:', jobErr.message);
+    }
   } catch (error) {
     console.warn('⚠️ [DB WARNING] Error during initial connection check:', error.message);
   }

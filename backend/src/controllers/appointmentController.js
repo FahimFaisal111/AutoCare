@@ -43,6 +43,23 @@ class AppointmentController {
     }
   }
 
+  async getTechnicianAvailability(req, res, next) {
+    try {
+      const { date, durationMinutes, targetDateTime } = req.query;
+      const result = await appointmentService.getTechnicianAvailabilityAndSlots(
+        {
+          workshopId: req.user.workshopId,
+          targetDate: date,
+          durationMinutes: durationMinutes ? parseInt(durationMinutes, 10) : undefined,
+          targetDateTime
+        },
+        req.user
+      );
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 module.exports = new AppointmentController();
